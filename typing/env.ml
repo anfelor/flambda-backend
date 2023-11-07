@@ -335,6 +335,9 @@ type lock =
   | Region_lock
   | Exclave_lock
   | Unboxed_lock (* to prevent capture of terms with non-value types *)
+  | Borrow_lock of (Longident.t * Location.t) list ref
+  (** Added by functions; borrowing variables inside this function will add
+  the name of the variable and the borrowing location to the [list] *)
 
 type lock_item =
   | Value
@@ -2486,6 +2489,11 @@ let add_closure_lock closure_context comonadic env =
 
 let add_region_lock env = add_lock Region_lock env
 
+let add_borrow_lock r env =
+  let lock = Borrow_lock r
+  in
+  { env with values = IdTbl.add_lock lock env.values }
+
 let add_exclave_lock env = add_lock Exclave_lock env
 
 let add_unboxed_lock env = add_lock Unboxed_lock env
@@ -2988,7 +2996,7 @@ let unboxed_type ~errors ~env ~loc ~lid ty =
 
     [ty] is optional as the function works on modules and classes as well, for
     which [ty] should be [None]. *)
-let walk_locks ~errors ~loc ~env ~item ~lid mode ty locks =
+let walk_locks ~errors ~loc ~env ~item ~lid ?(borrow = false) mode ty locks =
   let vmode = { mode; context = None } in
   List.fold_left
     (fun vmode lock ->
@@ -3005,6 +3013,10 @@ let walk_locks ~errors ~loc ~env ~item ~lid mode ty locks =
       | Unboxed_lock ->
           unboxed_type ~errors ~env ~loc ~lid ty;
           vmode
+      | Borrow_lock r ->
+        (* Overwriting is fine *)
+        (if borrow then r := (lid, loc) :: !r);
+        vmode
     ) vmode locks
 
 let lookup_ident_value ~errors ~use ~loc name env =
@@ -3471,7 +3483,7 @@ let lookup_value_lazy ~errors ~use ~loc lid env =
   | Ldot(l, s) -> lookup_dot_value ~errors ~use ~loc l s env
   | Lapply _ -> assert false
 
-let lookup_value ~errors ~use ~loc lid env =
+let lookup_value ~errors ~use ~loc ?(borrow = false) lid env =
   check_value_name (Longident.last lid) loc;
   let path, locks, vda =
     lookup_value_lazy ~errors ~use ~loc lid env
@@ -3492,7 +3504,7 @@ let lookup_value ~errors ~use ~loc lid env =
   let vd = Subst.Lazy.force_value_description vd in
   let vmode =
     if use then
-      walk_locks ~errors ~loc ~env ~item:Value ~lid mode (Some vd.val_type) locks
+      walk_locks ~errors ~loc ~env ~item:Value ~lid ~borrow mode (Some vd.val_type) locks
     else
       mode_default mode
   in
@@ -3655,8 +3667,8 @@ let lookup_module ?(use=true) ?(lock=use) ~loc lid env =
   let path, desc, vmode = lookup_module ~errors:true ~use ~lock ~loc lid env in
   path, desc, vmode.mode
 
-let lookup_value ?(use=true) ~loc lid env =
-  lookup_value ~errors:true ~use ~loc lid env
+let lookup_value ?(use=true) ~loc ?(borrow = false) lid env =
+  lookup_value ~errors:true ~use ~loc ~borrow lid env
 
 let lookup_type ?(use=true) ~loc lid env =
   lookup_type ~errors:true ~use ~loc lid env

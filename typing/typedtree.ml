@@ -67,6 +67,10 @@ let aliased_many_use =
   ( Mode.Uniqueness.disallow_left Mode.Uniqueness.aliased,
     Mode.Linearity.disallow_right Mode.Linearity.many )
 
+type borrow_kind =
+  | Borrow_self
+  | Borrow_var of Path.t
+
 type pattern = value general_pattern
 and 'k general_pattern = 'k pattern_desc pattern_data
 
@@ -135,6 +139,8 @@ and exp_extra =
   | Texp_poly of core_type option
   | Texp_newtype of Ident.t * string loc * Jkind.annotation option * Uid.t
   | Texp_stack
+  | Texp_borrow of borrow_kind
+  | Texp_region
 
 and arg_label = Types.arg_label =
   | Nolabel

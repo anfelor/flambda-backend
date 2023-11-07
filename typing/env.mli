@@ -262,7 +262,7 @@ type actual_mode = {
 }
 
 val lookup_value:
-  ?use:bool -> loc:Location.t -> Longident.t -> t ->
+  ?use:bool -> loc:Location.t -> ?borrow:bool -> Longident.t -> t ->
   Path.t * value_description * actual_mode
 val lookup_type:
   ?use:bool -> loc:Location.t -> Longident.t -> t ->
@@ -472,6 +472,7 @@ val add_closure_lock : closure_context
   -> ('l * Mode.allowed) Mode.Value.Comonadic.t -> t -> t
 val add_region_lock : t -> t
 val add_exclave_lock : t -> t
+val add_borrow_lock : (Longident.t * Location.t) list ref -> t -> t
 val add_unboxed_lock : t -> t
 
 (* Initialize the cache of in-core module interfaces. *)

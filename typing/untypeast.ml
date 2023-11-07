@@ -436,6 +436,8 @@ let exp_extra sub (extra, loc, attrs) sexp =
     | Texp_newtype (_, label_loc, jkind, _) ->
         Pexp_newtype (label_loc, Option.map snd jkind, sexp)
     | Texp_stack -> Pexp_stack sexp
+    | Texp_borrow _ -> assert false
+    | Texp_region -> assert false
   in
   Exp.mk ~loc ~attrs desc
 
@@ -536,6 +538,8 @@ let expression sub exp =
                   )
                 | Some (Texp_poly _ | Texp_newtype _) | Some (Texp_constraint (None, _))
                 | Some Texp_stack
+                | Some (Texp_borrow _)
+                | Some Texp_region
                 | None -> None
               in
               let constraint_ =

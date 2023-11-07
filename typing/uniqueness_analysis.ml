@@ -200,6 +200,9 @@ module Usage : sig
         (** A borrowed usage with an arbitrary occurrence. The occurrence is
         only for future error messages. Currently not used, because we don't
         have explicit borrowing *)
+    | Borrowing of Occurrence.t
+        (** The usage of being borrowed; will be lifted to [Borrowed] by the
+        surrounding [exp_extra.Texp_region] *)
     | Maybe_aliased of Maybe_aliased.t
         (** A usage that could be either borrowed or aliased. *)
     | Aliased of Aliased.t  (** A aliased usage *)
@@ -235,10 +238,12 @@ module Usage : sig
   (** Parallel composition *)
   val par : t -> t -> t
 end = struct
-  (* We have Unused (top) > Borrowed > Aliased > Unique > Error (bot).
+  (* We have Unused (top) > Borrowed > Borrowing > Shared > Unique > Error (bot).
 
      - Unused means unused
      - Borrowed means read-only access confined to a region
+     - Borrowing means the value is being borrowed in the current region. See
+     [Consideration of Borrowing].
      - Aliased means read-only access that may escape a region. For example,
      storing the value in a cell that can be accessed later.
      - Unique means accessing the value as if it's the only pointer. Example
@@ -287,9 +292,81 @@ end = struct
      error is represented as exception which is just easier.
   *)
 
+  (* Consideration of Borrowing:
+     - As mentioned above, Borrowing is only marked for the exact point of the &
+     symbol, while the actual usage of the borrowed value later is not tracked
+     at all. Therefore, when we see [Borrowing `seq` Unique], we should remember
+     the implicit usage of the borrowed value potentially after [Unique]. On the
+     other hand, when we see [Unique `seq` Borrowing], we know there is no usage
+     of the borrowed value before [Unique].
+
+     # Ordering
+     [Borrowing] is stronger than (less than) [Borrowed]. Consider the
+     following example:
+
+     let x = (if true then id &y else &y) in
+     unique_use y
+
+     This would compute [((Borrowed y) choose (Borrowing y)) seq (Unique y)] and
+     should error. For it to turn out this way, the [choose] must return
+     [Borrowing y].
+
+     # How seq works for [Borrowing]
+     Recall that by definition we always have [a seq b <= a choose b].
+
+     - [Borrowing seq Unique = Error], because borrowing a value
+     and use the original value uniquely in that region is unsound. Example:
+
+     let x = &y in
+     unique_use y;
+     share_use x
+
+     Note that the share use of [x] will not be tracked at all - it's implicitly
+     expressed by the Borrowing use of [y], and the latter bears the
+     responsibility to prevent unique use of [y]. (unique use of [x] is
+     prevented by [typecore].)
+
+     - [Unique seq Borrowing = Error], obviously.
+
+     - [Borrowing seq Shared = Shared]. Because the shared usage is not forced by
+     [typecore] to be local and thus might escape the region, which ruins the
+     borrowing.
+     - [Shared seq Borrowing = Shared], similarly.
+
+     - [Borrowing seq Borrowed = Borrowing], obviously. Example:
+
+     let x = &y in
+     foo &y;
+     ...
+
+     - [Borrowed seq Borrowing = Borrowing], obviously.
+
+     - [Borrowing seq Borrowing = Borrowing]. Example:
+
+     let x = &y
+     and z = &y in
+     ...
+
+     - Note that borrowing a borrowed value is not tracked at all but fine.
+     Example:
+
+     let x = &y in
+     let z = &x in
+     ...
+
+     neither of [z] and [x] are tracked, and we will only have Borrowing of [y],
+     which seems fine.
+
+     # How par works for [Borrowing]
+     Note that in general, by definition we should have [a par b <= a seq b].
+     We also note that it seems that [Borrowing seq b = b seq Borrowing]. We
+     therefore suspect [Borrowing par b = Borrowing seq b].
+  *)
+
   type t =
     | Unused
     | Borrowed of Occurrence.t
+    | Borrowing of Occurrence.t
     | Maybe_aliased of Maybe_aliased.t
     | Aliased of Aliased.t
     | Maybe_unique of Maybe_unique.t
@@ -301,6 +378,7 @@ end = struct
 
   let extract_occurrence = function
     | Unused -> None
+    | Borrowing occ -> Some occ
     | Borrowed occ -> Some occ
     | Maybe_aliased t -> Some (Maybe_aliased.extract_occurrence_access t |> fst)
     | Aliased t -> Some (Aliased.extract_occurrence t)
@@ -310,6 +388,7 @@ end = struct
     match m0, m1 with
     | Unused, m | m, Unused -> m
     | Borrowed _, t | t, Borrowed _ -> t
+    | Borrowing _, t | t, Borrowing _ -> t
     | Maybe_aliased l0, Maybe_aliased l1 ->
       Maybe_aliased (Maybe_aliased.meet l0 l1)
     | Maybe_aliased _, t | t, Maybe_aliased _ -> t
@@ -343,6 +422,20 @@ end = struct
     | Borrowed _, Aliased t | Aliased t, Borrowed _ -> Aliased t
     | Borrowed occ, Maybe_unique t | Maybe_unique t, Borrowed occ ->
       force_aliased_multiuse t (Borrowed occ) First;
+      aliased (Maybe_unique.extract_occurrence t) Aliased.Forced
+    | Borrowing occ, Borrowed _ | Borrowed _, Borrowing occ -> Borrowing occ
+    | Borrowing _, Borrowing _ -> m0
+    | Borrowing _, Maybe_aliased t | Maybe_aliased t, Borrowing _ ->
+      (* [t] can be Borrowed or Aliased. The Borrowing already prevents other
+         unique usages. Therefore, we make [t] to be Aliased without any loss *)
+      let occ, _ = Maybe_aliased.extract_occurrence_access t in
+      aliased occ Aliased.Forced
+    | Borrowing _, Aliased t | Aliased t, Borrowing _ -> Aliased t
+    | Borrowing _, Maybe_unique t ->
+      force_aliased_multiuse t m0 Second;
+      aliased (Maybe_unique.extract_occurrence t) Aliased.Forced
+    | Maybe_unique t, Borrowing _ ->
+      force_aliased_multiuse t m1 First;
       aliased (Maybe_unique.extract_occurrence t) Aliased.Forced
     | Maybe_aliased t0, Maybe_aliased t1 ->
       Maybe_aliased (Maybe_aliased.meet t0 t1)
@@ -408,6 +501,22 @@ end = struct
       force_aliased_multiuse l m1 First;
       aliased occ Aliased.Forced
     | Aliased _, Maybe_aliased _ -> m0
+    | Borrowing _, Borrowed _ -> m0
+    | Borrowing _, Borrowing _ -> m0
+    | Borrowing _, Maybe_aliased t ->
+      let occ, _ = Maybe_aliased.extract_occurrence_access t in
+      aliased occ Aliased.Forced
+    | Maybe_aliased t, Borrowing _ ->
+      let occ, _ = Maybe_aliased.extract_occurrence_access t in
+      aliased occ Aliased.Forced
+    | Borrowing _, Aliased _ -> m1
+    | Aliased _, Borrowing _ -> m0
+    | Borrowing _, Maybe_unique t ->
+      force_aliased_multiuse t m0 Second;
+      aliased (Maybe_unique.extract_occurrence t) Aliased.Forced
+    | Maybe_unique t, Borrowing _ ->
+      force_aliased_multiuse t m1 First;
+      aliased (Maybe_unique.extract_occurrence t) Aliased.Forced
     | Maybe_unique l0, Maybe_aliased l1 ->
       (* Four cases:
           Aliased;Borrowed = Aliased
@@ -769,6 +878,8 @@ module Paths : sig
     Maybe_aliased.access -> Occurrence.t -> t -> UF.t
 
   val mark_aliased : Occurrence.t -> Aliased.reason -> t -> UF.t
+
+  val mark_borrowing : Occurrence.t -> t -> UF.t
 end = struct
   type t = UF.Path.t list
 
@@ -818,6 +929,8 @@ end = struct
       (memory_address paths)
 
   let mark_aliased occ reason paths = mark (Usage.aliased occ reason) paths
+
+  let mark_borrowing occ paths = mark (Usage.Borrowing occ) paths
 end
 
 let force_aliased_boundary unique_use occ ~reason =
@@ -863,6 +976,9 @@ module Value : sig
   val mark_implicit_borrow_memory_address : Maybe_aliased.access -> t -> UF.t
 
   val mark_aliased : reason:boundary_reason -> t -> UF.t
+
+  (** Mark the value as borrowing *)
+  val mark_borrowing : Occurrence.t -> t -> UF.t
 end = struct
   type t =
     | Fresh
@@ -903,6 +1019,13 @@ end = struct
       force_aliased_boundary unique_use occ ~reason;
       let aliased = Usage.aliased occ Aliased.Forced in
       Paths.mark aliased paths
+
+  (* using the [occ] of the borrowing symbol instead of the varaible itself *)
+  let mark_borrowing occ = function
+    | Fresh -> UF.unused
+    | Existing { paths; _ } ->
+      let borrowing = Usage.Borrowing occ in
+      Paths.mark borrowing paths
 end
 
 module Ienv : sig
@@ -1141,6 +1264,15 @@ let value_of_ident ienv unique_use occ path =
     None
   | Path.Papply _ | Path.Pextra_ty _ -> assert false
 
+let paths_of_ident ienv id =
+  match id with
+  | Path.Pident id -> (
+    match Ienv.find_opt id ienv with
+    | None -> Paths.untracked
+    | Some paths -> paths)
+  | Path.Pdot _ -> Paths.untracked
+  | Path.Papply _ | Path.Pextra_ty _ -> assert false
+
 (* TODO: replace the dirty hack.
    The following functions are dirty hacks and used for modules and classes.
    Currently we treat the boundary between modules/classes and their surrounding
@@ -1194,6 +1326,15 @@ let lift_implicit_borrowing uf =
         m)
     uf
 
+let confine_explicit_borrowing uf =
+  UF.map
+    (function
+      | Borrowing occ ->
+        (* Borrowing confined to the current region, and weakened to Borrowed *)
+        Borrowed occ
+      | m -> m)
+    uf
+
 (* There are two modes our algorithm will work at.
 
    In the first mode, we care about if the expression can be considered as
@@ -1206,10 +1347,9 @@ let lift_implicit_borrowing uf =
    using a.x.y. This mode is used in most occasions. *)
 
 (** Corresponds to the second mode *)
-let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
-  match exp.exp_desc with
-  | Texp_ident _ ->
-    let value, uf = check_uniqueness_exp_as_value ienv exp in
+let rec expression_desc (ienv : Ienv.t) loc = function
+  | Texp_ident _ as e ->
+    let value, uf = expression_desc_as_value ienv loc e in
     UF.seq uf (Value.mark_maybe_unique value)
   | Texp_constant _ -> UF.unused
   | Texp_let (_, vbs, body) ->
@@ -1302,8 +1442,8 @@ let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
         fields
     in
     UF.par uf_ext (UF.pars (Array.to_list uf_fields))
-  | Texp_field _ ->
-    let value, uf = check_uniqueness_exp_as_value ienv exp in
+  | Texp_field _ as e ->
+    let value, uf = expression_desc_as_value ienv loc e in
     UF.seq uf (Value.mark_maybe_unique value)
   | Texp_setfield (rcd, _, _, _, arg) ->
     let value, uf_rcd = check_uniqueness_exp_as_value ienv rcd in
@@ -1368,7 +1508,7 @@ let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
        which invokes uniqueness check.*)
     mark_aliased_open_variables ienv
       (fun iter -> iter.class_structure iter cls_struc)
-      exp.exp_loc
+      loc
   | Texp_pack mod_expr ->
     (* the module will be type-checked by Typemod which invokes uniqueness
        analysis. *)
@@ -1399,15 +1539,18 @@ let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
   | Texp_exclave e -> check_uniqueness_exp ienv e
   | Texp_src_pos -> UF.unused
 
+and check_uniqueness_exp ienv e =
+  let value, uf = check_uniqueness_exp_as_value ienv e in
+  let uf' = Value.mark_maybe_unique value in
+  UF.seq uf uf'
+
 (**
 Corresponds to the first mode.
 
 Look at exp and see if it can be treated as an alias. Currently only
 [Texp_ident] and [Texp_field] (and recursively so) are treated so. If it returns
 [Some Value.t], the caller is responsible to mark it as used as needed *)
-and check_uniqueness_exp_as_value ienv exp : Value.t * UF.t =
-  let loc = exp.exp_loc in
-  match exp.exp_desc with
+and expression_desc_as_value ienv loc = function
   | Texp_ident (p, _, _, _, unique_use) ->
     let occ = Occurrence.mk loc in
     let value =
@@ -1437,7 +1580,31 @@ and check_uniqueness_exp_as_value ienv exp : Value.t * UF.t =
       in
       value, UF.seqs [uf; uf_read; uf_boxing])
   (* CR-someday anlorenzen: This could also support let-bindings. *)
-  | _ -> Value.fresh, check_uniqueness_exp ienv exp
+  | e -> Value.fresh, expression_desc ienv loc e
+
+and check_uniqueness_exp_as_value ienv e =
+  let value, uf = expression_desc_as_value ienv e.exp_loc e.exp_desc in
+  let has_region, value, uf_bor =
+    List.fold_left
+      (fun (has_region, value, uf_bor) (extra, loc, _attrs) ->
+        match extra with
+        | Texp_region -> true, value, uf_bor
+        | Texp_borrow kind -> (
+          let occ = Occurrence.mk loc in
+          match kind with
+          | Borrow_self ->
+            (* [Value.fresh] so the borrowed value is not tracked for the
+               remaining of the region *)
+            has_region, Value.fresh, Value.mark_borrowing occ value
+          | Borrow_var id ->
+            let paths = paths_of_ident ienv id in
+            let uf_bor' = Paths.mark_borrowing occ paths in
+            has_region, value, UF.seq uf_bor uf_bor')
+        | _ -> has_region, value, uf_bor)
+      (false, value, UF.unused) e.exp_extra
+  in
+  let uf = if has_region then confine_explicit_borrowing uf else uf in
+  value, UF.seq uf uf_bor
 
 (** take typed expression, do some parsing and returns [value_to_match] *)
 and check_uniqueness_exp_for_match ienv exp : value_to_match * UF.t =

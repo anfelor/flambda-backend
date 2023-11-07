@@ -283,6 +283,8 @@ let extra sub = function
   | Texp_newtype _ -> ()
   | Texp_poly cto -> Option.iter (sub.typ sub) cto
   | Texp_stack -> ()
+  | Texp_borrow _ -> ()
+  | Texp_region -> ()
 
 let function_param sub { fp_loc; fp_kind; fp_newtypes; _ } =
   sub.location sub fp_loc;

@@ -86,6 +86,14 @@ type texp_field_boxing =
 
 val aliased_many_use : unique_use
 
+type borrow_kind =
+  | Borrow_self
+  (** The expression itself is being borrowed *)
+  | Borrow_var of Path.t
+  (** The expression is borrowing the variable, usually a function closing over
+  a borrowing. *)
+  (* Borrowing multiple variables are represented by multiple [Texp_borrow] *)
+
 type pattern = value general_pattern
 and 'k general_pattern = 'k pattern_desc pattern_data
 
@@ -237,6 +245,13 @@ and exp_extra =
         them here, as the cost of tracking this additional information is minimal. *)
   | Texp_stack
         (** stack_ E *)
+  | Texp_borrow of borrow_kind
+  (** Indicates this expression is borrowing. *)
+  | Texp_region
+  (** Indicates this expression is wrapped inside a fake region. *)
+(* NB. If an expression has both [Texp_borrow] and [Texp_region], we
+   assume the [Texp_borrow] is outer than [Texp_region]. Currently it's
+   impossible. *)
 
 and arg_label = Types.arg_label =
   | Nolabel

@@ -372,6 +372,8 @@ let extra sub = function
   | Texp_newtype _ as d -> d
   | Texp_poly cto -> Texp_poly (Option.map (sub.typ sub) cto)
   | Texp_stack as d -> d
+  | Texp_borrow _ as d -> d
+  | Texp_region as d -> d
 
 let function_body sub body =
   match body with

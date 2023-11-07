@@ -433,6 +433,10 @@ and expression_extra i ppf x attrs =
   | Texp_stack ->
       line i ppf "Texp_stack\n";
       attributes i ppf attrs
+  | Texp_borrow _ ->
+      line i ppf "Texp_borrow\n"
+  | Texp_region ->
+      line i ppf "Texp_region\n"
 
 and alloc_mode_raw: type l r. _ -> _ -> (l * r) Mode.Alloc.t -> _
   = fun i ppf m -> line i ppf "alloc_mode %a\n" (Mode.Alloc.print ()) m
