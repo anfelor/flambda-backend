@@ -1094,7 +1094,7 @@ let transl_store_subst = ref Ident.Map.empty
 
 let nat_toplevel_name id =
   try match Ident.Map.find id !transl_store_subst with
-    | Lprim(Pfield (pos, _, _),
+    | Lprim(Pfield (pos, _, _, _),
             [Lprim(Pgetglobal glob, [], _)], _) -> (glob,pos)
     | _ -> raise Not_found
   with Not_found ->

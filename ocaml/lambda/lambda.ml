@@ -123,6 +123,10 @@ let eq_mode a b =
   | Alloc_heap, Alloc_local -> false
   | Alloc_local, Alloc_heap -> false
 
+type unique_barrier =
+  | MayBePushedDown
+  | MustStayHere
+
 type initialization_or_assignment =
   | Assignment of modify_mode
   | Heap_initialization
@@ -146,18 +150,19 @@ type primitive =
   | Pmakefloatblock of mutable_flag * alloc_mode
   | Pmakeufloatblock of mutable_flag * alloc_mode
   | Pmakemixedblock of int * mutable_flag * mixed_block_shape * alloc_mode
-  | Pfield of int * immediate_or_pointer * field_read_semantics
+  | Pfield of int * immediate_or_pointer * field_read_semantics * unique_barrier
   | Pfield_computed of field_read_semantics
-  | Psetfield of int * immediate_or_pointer * initialization_or_assignment
+  | Psetfield of int * immediate_or_pointer * initialization_or_assignment *
+                 unique_barrier
   | Psetfield_computed of immediate_or_pointer * initialization_or_assignment
-  | Pfloatfield of int * field_read_semantics * alloc_mode
-  | Pufloatfield of int * field_read_semantics
+  | Pfloatfield of int * field_read_semantics * alloc_mode * unique_barrier
+  | Pufloatfield of int * field_read_semantics * unique_barrier
   | Pmixedfield of
-      int * mixed_block_read * mixed_block_shape * field_read_semantics
-  | Psetfloatfield of int * initialization_or_assignment
-  | Psetufloatfield of int * initialization_or_assignment
-  | Psetmixedfield of
-      int * mixed_block_write * mixed_block_shape * initialization_or_assignment
+      int * mixed_block_read * mixed_block_shape * field_read_semantics * unique_barrier
+  | Psetfloatfield of int * initialization_or_assignment * unique_barrier
+  | Psetufloatfield of int * initialization_or_assignment * unique_barrier
+  | Psetmixedfield of int * mixed_block_write * mixed_block_shape *
+                      initialization_or_assignment * unique_barrier
   | Pduprecord of Types.record_representation * int
   (* Unboxed products *)
   | Pmake_unboxed_product of layout list
@@ -1256,7 +1261,7 @@ let rec transl_address loc = function
       then Lprim (Pgetpredef id, [], loc)
       else Lvar id
   | Env.Adot(addr, pos) ->
-      Lprim(Pfield(pos, Pointer, Reads_agree),
+      Lprim(Pfield(pos, Pointer, Reads_agree, MayBePushedDown),
                    [transl_address loc addr], loc)
 
 let transl_path find loc env path =
@@ -1978,7 +1983,7 @@ let primitive_result_layout (p : primitive) =
   | Pstring_load_128 _ | Pbytes_load_128 _
   | Pbigstring_load_128 { boxed = true; _ } ->
       layout_boxed_vector (Pvec128 Int8x16)
-  | Pbigstring_load_32 { boxed = false; _ } 
+  | Pbigstring_load_32 { boxed = false; _ }
   | Pstring_load_32 { boxed = false; _ }
   | Pbytes_load_32 { boxed = false; _ } -> layout_unboxed_int Pint32
   | Pbigstring_load_f32 { boxed = false; _ }

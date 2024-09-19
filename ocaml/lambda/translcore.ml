@@ -626,21 +626,22 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
                   [Lconst(const_int tag); lam],
                   of_location ~scopes e.exp_loc)
       end
-  | Texp_record {fields; representation; extended_expression; alloc_mode} ->
+  | Texp_record {fields; representation; extended_expression; alloc_mode; unique_barrier} ->
       transl_record ~scopes e.exp_loc e.exp_env
-        (Option.map transl_alloc_mode alloc_mode)
+        (Option.map transl_alloc_mode alloc_mode) unique_barrier
         fields representation extended_expression
-  | Texp_field(arg, id, lbl, float) ->
+  | Texp_field(arg, id, lbl, float, ubr) ->
       let targ = transl_exp ~scopes Jkind.Sort.for_record arg in
       let sem =
         if Types.is_mutable lbl.lbl_mut then Reads_vary else Reads_agree
       in
       let lbl_sort = Jkind.sort_of_jkind lbl.lbl_jkind in
+      let unique_barrier = transl_unique_barrier ubr in
       check_record_field_sort id.loc lbl_sort;
       begin match lbl.lbl_repres with
           Record_boxed _
         | Record_inlined (_, Constructor_uniform_value, Variant_boxed _) ->
-          Lprim (Pfield (lbl.lbl_pos, maybe_pointer e, sem), [targ],
+          Lprim (Pfield (lbl.lbl_pos, maybe_pointer e, sem, unique_barrier), [targ],
                  of_location ~scopes e.exp_loc)
         | Record_unboxed | Record_inlined (_, _, Variant_unboxed) -> targ
         | Record_float ->
@@ -650,13 +651,13 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
             | Non_boxing _ -> assert false
           in
           let mode = transl_alloc_mode alloc_mode in
-          Lprim (Pfloatfield (lbl.lbl_pos, sem, mode), [targ],
+          Lprim (Pfloatfield (lbl.lbl_pos, sem, mode, unique_barrier), [targ],
                  of_location ~scopes e.exp_loc)
         | Record_ufloat ->
-          Lprim (Pufloatfield (lbl.lbl_pos, sem), [targ],
+          Lprim (Pufloatfield (lbl.lbl_pos, sem, unique_barrier), [targ],
                  of_location ~scopes e.exp_loc)
         | Record_inlined (_, Constructor_uniform_value, Variant_extensible) ->
-          Lprim (Pfield (lbl.lbl_pos + 1, maybe_pointer e, sem), [targ],
+          Lprim (Pfield (lbl.lbl_pos + 1, maybe_pointer e, sem, unique_barrier), [targ],
                  of_location ~scopes e.exp_loc)
         | Record_inlined (_, Constructor_mixed _, Variant_extensible) ->
             (* CR layouts v5.9: support this *)
@@ -688,15 +689,16 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
           let shape : Lambda.mixed_block_shape =
             { value_prefix_len; flat_suffix }
           in
-          Lprim (Pmixedfield (lbl.lbl_pos, read, shape, sem), [targ],
+          Lprim (Pmixedfield (lbl.lbl_pos, read, shape, sem, unique_barrier), [targ],
                   of_location ~scopes e.exp_loc)
       end
-  | Texp_setfield(arg, arg_mode, id, lbl, newval) ->
+  | Texp_setfield(arg, arg_mode, id, lbl, newval, ubr) ->
       (* CR layouts v2.5: When we allow `any` in record fields and check
          representability on construction, [sort_of_jkind] will be unsafe here.
          Probably we should add a sort to `Texp_setfield` in the typed tree,
          then. *)
       let lbl_sort = Jkind.sort_of_jkind lbl.lbl_jkind in
+      let unique_barrier = transl_unique_barrier ubr in
       check_record_field_sort id.loc lbl_sort;
       let mode =
         Assignment (transl_modify_mode arg_mode)
@@ -705,13 +707,13 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
         match lbl.lbl_repres with
           Record_boxed _
         | Record_inlined (_, Constructor_uniform_value, Variant_boxed _) ->
-          Psetfield(lbl.lbl_pos, maybe_pointer newval, mode)
+          Psetfield(lbl.lbl_pos, maybe_pointer newval, mode, unique_barrier)
         | Record_unboxed | Record_inlined (_, _, Variant_unboxed) ->
           assert false
-        | Record_float -> Psetfloatfield (lbl.lbl_pos, mode)
-        | Record_ufloat -> Psetufloatfield (lbl.lbl_pos, mode)
+        | Record_float -> Psetfloatfield (lbl.lbl_pos, mode, unique_barrier)
+        | Record_ufloat -> Psetufloatfield (lbl.lbl_pos, mode, unique_barrier)
         | Record_inlined (_, Constructor_uniform_value, Variant_extensible) ->
-          Psetfield (lbl.lbl_pos + 1, maybe_pointer newval, mode)
+          Psetfield (lbl.lbl_pos + 1, maybe_pointer newval, mode, unique_barrier)
         | Record_inlined (_, Constructor_mixed _, Variant_extensible) ->
             (* CR layouts v5.9: support this *)
             fatal_error
@@ -731,7 +733,7 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
            let shape : Lambda.mixed_block_shape =
              { value_prefix_len; flat_suffix }
            in
-           Psetmixedfield(lbl.lbl_pos, write, shape, mode)
+           Psetmixedfield(lbl.lbl_pos, write, shape, mode, unique_barrier)
         end
       in
       Lprim(access, [transl_exp ~scopes Jkind.Sort.for_record arg;
@@ -885,7 +887,7 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
       Lapply{
         ap_loc=loc;
         ap_func=
-          Lprim(Pfield (0, Pointer, Reads_vary),
+          Lprim(Pfield (0, Pointer, Reads_vary, MayBePushedDown),
               [transl_class_path loc e.exp_env cl], loc);
         ap_args=[lambda_unit];
         ap_result_layout=layout_exp sort e;
@@ -1788,10 +1790,11 @@ and transl_setinstvar ~scopes loc self var expr =
     [self; var; transl_exp ~scopes Jkind.Sort.for_instance_var expr], loc)
 
 (* CR layouts v5: Invariant - this is only called on values.  Relax that. *)
-and transl_record ~scopes loc env mode fields repres opt_init_expr =
+and transl_record ~scopes loc env mode ubr fields repres opt_init_expr =
   let size = Array.length fields in
   (* Determine if there are "enough" fields (only relevant if this is a
      functional-style record update *)
+  let unique_barrier = transl_unique_barrier ubr in
   let no_init = match opt_init_expr with None -> true | _ -> false in
   let on_heap = match mode with
     | None -> false (* unboxed is not on heap *)
@@ -1821,11 +1824,11 @@ and transl_record ~scopes loc env mode fields repres opt_init_expr =
                  match repres with
                    Record_boxed _
                  | Record_inlined (_, Constructor_uniform_value, Variant_boxed _) ->
-                   Pfield (i, maybe_pointer_type env typ, sem)
+                   Pfield (i, maybe_pointer_type env typ, sem, unique_barrier)
                  | Record_unboxed | Record_inlined (_, _, Variant_unboxed) ->
                    assert false
                  | Record_inlined (_, Constructor_uniform_value, Variant_extensible) ->
-                     Pfield (i + 1, maybe_pointer_type env typ, sem)
+                     Pfield (i + 1, maybe_pointer_type env typ, sem, unique_barrier)
                  | Record_inlined (_, Constructor_mixed _, Variant_extensible) ->
                      (* CR layouts v5.9: support this *)
                      fatal_error
@@ -1833,8 +1836,8 @@ and transl_record ~scopes loc env mode fields repres opt_init_expr =
                  | Record_float ->
                     (* This allocation is always deleted,
                        so it's simpler to leave it Alloc_heap *)
-                    Pfloatfield (i, sem, alloc_heap)
-                 | Record_ufloat -> Pufloatfield (i, sem)
+                    Pfloatfield (i, sem, alloc_heap, unique_barrier)
+                 | Record_ufloat -> Pufloatfield (i, sem, unique_barrier)
                  | Record_inlined (_, Constructor_mixed shape, Variant_boxed _)
                  | Record_mixed shape ->
                   let { value_prefix_len; flat_suffix } : mixed_product_shape =
@@ -1858,7 +1861,7 @@ and transl_record ~scopes loc env mode fields repres opt_init_expr =
                    let shape : Lambda.mixed_block_shape =
                      { value_prefix_len; flat_suffix }
                    in
-                   Pmixedfield (i, read, shape, sem)
+                   Pmixedfield (i, read, shape, sem, unique_barrier)
                in
                Lprim(access, [Lvar init_id],
                      of_location ~scopes loc),
@@ -1952,6 +1955,10 @@ and transl_record ~scopes loc env mode fields repres opt_init_expr =
   end else begin
     (* Take a shallow copy of the init record, then mutate the fields
        of the copy *)
+    (* CR anlorenzen: We do not know if the record will be overwritten later.
+       If so, that would make it unsafe to push the field setters beyond
+       the overwrite (where they would falsily set fields of the new record).
+       For this reason, we assume that all field setters must stay here. *)
     let copy_id = Ident.create_local "newrecord" in
     let update_field cont (lbl, definition) =
       (* CR layouts v5: allow more unboxed types here. *)
@@ -1965,17 +1972,17 @@ and transl_record ~scopes loc env mode fields repres opt_init_expr =
               Record_boxed _
             | Record_inlined (_, Constructor_uniform_value, Variant_boxed _) ->
                 let ptr = maybe_pointer expr in
-                Psetfield(lbl.lbl_pos, ptr, Assignment modify_heap)
+                Psetfield(lbl.lbl_pos, ptr, Assignment modify_heap, MustStayHere)
             | Record_unboxed | Record_inlined (_, _, Variant_unboxed) ->
                 assert false
             | Record_float ->
-                Psetfloatfield (lbl.lbl_pos, Assignment modify_heap)
+                Psetfloatfield (lbl.lbl_pos, Assignment modify_heap, MustStayHere)
             | Record_ufloat ->
-                Psetufloatfield (lbl.lbl_pos, Assignment modify_heap)
+                Psetufloatfield (lbl.lbl_pos, Assignment modify_heap, MustStayHere)
             | Record_inlined (_, Constructor_uniform_value, Variant_extensible) ->
                 let pos = lbl.lbl_pos + 1 in
                 let ptr = maybe_pointer expr in
-                Psetfield(pos, ptr, Assignment modify_heap)
+                Psetfield(pos, ptr, Assignment modify_heap, MustStayHere)
             | Record_inlined (_, Constructor_mixed _, Variant_extensible) ->
                 (* CR layouts v5.9: support this *)
                 fatal_error
@@ -1999,7 +2006,7 @@ and transl_record ~scopes loc env mode fields repres opt_init_expr =
                   { value_prefix_len; flat_suffix }
                 in
                 Psetmixedfield
-                  (lbl.lbl_pos, write, shape, Assignment modify_heap)
+                  (lbl.lbl_pos, write, shape, Assignment modify_heap, MustStayHere)
               end
           in
           Lsequence(Lprim(upd, [Lvar copy_id;

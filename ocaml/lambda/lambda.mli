@@ -60,6 +60,10 @@ val modify_maybe_stack : modify_mode
 
 val equal_alloc_mode : alloc_mode -> alloc_mode -> bool
 
+type unique_barrier =
+  | MayBePushedDown
+  | MustStayHere
+
 type initialization_or_assignment =
   (* [Assignment Alloc_local] is a mutation of a block that may be heap or local.
      [Assignment Alloc_heap] is a mutation of a block that's definitely heap. *)
@@ -123,21 +127,22 @@ type primitive =
   | Pmakefloatblock of mutable_flag * alloc_mode
   | Pmakeufloatblock of mutable_flag * alloc_mode
   | Pmakemixedblock of int * mutable_flag * mixed_block_shape * alloc_mode
-  | Pfield of int * immediate_or_pointer * field_read_semantics
+  | Pfield of int * immediate_or_pointer * field_read_semantics * unique_barrier
   | Pfield_computed of field_read_semantics
-  | Psetfield of int * immediate_or_pointer * initialization_or_assignment
+  | Psetfield of int * immediate_or_pointer * initialization_or_assignment *
+                 unique_barrier
   | Psetfield_computed of immediate_or_pointer * initialization_or_assignment
-  | Pfloatfield of int * field_read_semantics * alloc_mode
-  | Pufloatfield of int * field_read_semantics
+  | Pfloatfield of int * field_read_semantics * alloc_mode * unique_barrier
+  | Pufloatfield of int * field_read_semantics * unique_barrier
   | Pmixedfield of
-      int * mixed_block_read * mixed_block_shape * field_read_semantics
+      int * mixed_block_read * mixed_block_shape * field_read_semantics * unique_barrier
   (* [Pmixedfield] is an access to either the flat suffix or value prefix of a
      mixed record.
   *)
-  | Psetfloatfield of int * initialization_or_assignment
-  | Psetufloatfield of int * initialization_or_assignment
-  | Psetmixedfield of
-      int * mixed_block_write * mixed_block_shape * initialization_or_assignment
+  | Psetfloatfield of int * initialization_or_assignment * unique_barrier
+  | Psetufloatfield of int * initialization_or_assignment * unique_barrier
+  | Psetmixedfield of int * mixed_block_write * mixed_block_shape *
+                      initialization_or_assignment * unique_barrier
   | Pduprecord of Types.record_representation * int
   (* Unboxed products *)
   | Pmake_unboxed_product of layout list
