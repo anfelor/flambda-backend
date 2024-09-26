@@ -620,42 +620,58 @@ let bytes_like_set ~dbg ~unsafe
     check_access ~dbg ~size_int ~access_size ~primitive:unsafe_set bytes
       ~index_kind index
 
+(* Array bounds checks *)
+
+let multiple_word_array_access_validity_condition array ~size_int
+    array_length_kind index_kind ~width_in_scalars ~index =
+  let length_tagged = H.Prim (Unary (Array_length array_length_kind, array)) in
+  if width_in_scalars < 1
+  then Misc.fatal_errorf "Invalid width_in_scalars value: %d" width_in_scalars
+  else if width_in_scalars = 1
+  then
+    (* Ensure good code generation in the common case. *)
+    check_bound ~index_kind ~bound_kind:Tagged_immediate ~index
+      ~bound:length_tagged
+  else
+    let length_untagged = untag_int length_tagged in
+    let reduced_length_untagged =
+      H.Prim
+        (Binary
+           ( Int_arith (Naked_immediate, Sub),
+             length_untagged,
+             Simple
+               (Simple.untagged_const_int
+                  (Targetint_31_63.of_int (width_in_scalars - 1))) ))
+    in
+    (* We need to convert the length into a naked_nativeint because the
+       optimised version of the max_with_zero function needs to be on
+       machine-width integers to work (or at least on an integer number of bytes
+       to work). *)
+    let reduced_length_nativeint =
+      H.Prim
+        (Unary
+           ( Num_conv { src = Naked_immediate; dst = Naked_nativeint },
+             reduced_length_untagged ))
+    in
+    let nativeint_bound = max_with_zero ~size_int reduced_length_nativeint in
+    check_bound ~index_kind ~bound_kind:Naked_nativeint ~index
+      ~bound:nativeint_bound
+
 (* Array vector load/store *)
+
+let array_vector_access_width_in_scalars (array_kind : P.Array_kind.t) =
+  match array_kind with
+  | Naked_floats | Immediates | Naked_int64s | Naked_nativeints -> 2
+  | Naked_int32s | Naked_float32s -> 4
+  | Values ->
+    Misc.fatal_error
+      "Attempted to load/store a SIMD vector from/to a value array."
 
 let array_vector_access_validity_condition array ~size_int
     (array_kind : P.Array_kind.t) index =
-  let width_in_scalars =
-    match array_kind with
-    | Naked_floats | Immediates | Naked_int64s | Naked_nativeints -> 2
-    | Naked_int32s | Naked_float32s -> 4
-    | Values ->
-      Misc.fatal_error
-        "Attempted to load/store a SIMD vector from/to a value array."
-  in
-  let length_untagged =
-    untag_int (H.Prim (Unary (Array_length (Array_kind array_kind), array)))
-  in
-  let reduced_length_untagged =
-    H.Prim
-      (Binary
-         ( Int_arith (Naked_immediate, Sub),
-           length_untagged,
-           Simple
-             (Simple.untagged_const_int
-                (Targetint_31_63.of_int (width_in_scalars - 1))) ))
-  in
-  (* We need to convert the length into a naked_nativeint because the optimised
-     version of the max_with_zero function needs to be on machine-width integers
-     to work (or at least on an integer number of bytes to work). *)
-  let reduced_length_nativeint =
-    H.Prim
-      (Unary
-         ( Num_conv { src = Naked_immediate; dst = Naked_nativeint },
-           reduced_length_untagged ))
-  in
-  let nativeint_bound = max_with_zero ~size_int reduced_length_nativeint in
-  check_bound ~index_kind:Ptagged_int_index ~bound_kind:Naked_nativeint ~index
-    ~bound:nativeint_bound
+  let width_in_scalars = array_vector_access_width_in_scalars array_kind in
+  multiple_word_array_access_validity_condition array ~size_int
+    (Array_kind array_kind) Ptagged_int_index ~width_in_scalars ~index
 
 let check_array_vector_access ~dbg ~size_int ~array array_kind ~index primitive
     : H.expr_primitive =
@@ -806,16 +822,16 @@ let bigarray_set ~dbg ~unsafe kind layout b indexes value =
 
 (* Array accesses *)
 let array_access_validity_condition array array_kind index
-    ~(index_kind : L.array_index_kind) =
-  let arr_len_as_tagged_imm = H.Prim (Unary (Array_length array_kind, array)) in
-  [ check_bound ~index_kind ~bound_kind:Tagged_immediate ~index
-      ~bound:arr_len_as_tagged_imm ]
+    ~(index_kind : L.array_index_kind) ~size_int =
+  [ multiple_word_array_access_validity_condition array ~size_int array_kind
+      index_kind ~width_in_scalars:1 ~index ]
 
-let check_array_access ~dbg ~array array_kind ~index ~index_kind primitive :
-    H.expr_primitive =
+let check_array_access ~dbg ~array array_kind ~index ~index_kind ~size_int
+    primitive : H.expr_primitive =
   checked_access ~primitive
     ~conditions:
-      (array_access_validity_condition array array_kind index ~index_kind)
+      (array_access_validity_condition array array_kind index ~index_kind
+         ~size_int)
     ~dbg
 
 let array_load_unsafe ~array ~index (array_ref_kind : Array_ref_kind.t)
@@ -860,7 +876,8 @@ let[@inline always] match_on_array_ref_kind ~array array_ref_kind f :
     If_then_else
       ( Unary (Is_flat_float_array, array),
         f (Array_ref_kind.Naked_floats_to_be_boxed mode),
-        f Array_ref_kind.Values )
+        f Array_ref_kind.Values,
+        [K.With_subkind.any_value] )
 
 let[@inline always] match_on_array_set_kind ~array array_ref_kind f :
     H.expr_primitive =
@@ -872,7 +889,8 @@ let[@inline always] match_on_array_set_kind ~array array_ref_kind f :
     If_then_else
       ( Unary (Is_flat_float_array, array),
         f Array_set_kind.Naked_floats_to_be_unboxed,
-        f (Array_set_kind.Values (Assignment mode)) )
+        f (Array_set_kind.Values (Assignment mode)),
+        [K.With_subkind.tagged_immediate] )
 
 (* Safe arith (div/mod by zero) *)
 let checked_arith_op ~dbg (bi : Lambda.boxed_integer option) op mode arg1 arg2
@@ -1046,7 +1064,8 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
               Variadic
                 ( Make_array (Naked_floats, mutability, mode),
                   List.map unbox_float args ),
-              Variadic (Make_array (Values, mutability, mode), args) ) ]))
+              Variadic (Make_array (Values, mutability, mode), args),
+              [K.With_subkind.any_value] ) ]))
   | Popaque layout, [arg] -> opaque layout arg ~middle_end_only:false
   | Pobj_magic layout, [arg] -> opaque layout arg ~middle_end_only:true
   | Pduprecord (repr, num_fields), [[arg]] ->
@@ -1295,7 +1314,8 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
             Unary
               ( Duplicate_array
                   { kind = Values; source_mutability; destination_mutability },
-                arg ) ) ])
+                arg ),
+            [K.With_subkind.any_value] ) ])
   | Pstringlength, [[arg]] -> [tag_int (Unary (String_length String, arg))]
   | Pbyteslength, [[arg]] -> [tag_int (Unary (String_length Bytes, arg))]
   | Pstringrefu, [[str]; [index]] ->
@@ -1574,7 +1594,7 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
            ~current_region) ]
   | Parrayrefs (array_ref_kind, index_kind), [[array]; [index]] ->
     let array_kind = convert_array_ref_kind_for_length array_ref_kind in
-    [ check_array_access ~dbg ~array array_kind ~index ~index_kind
+    [ check_array_access ~dbg ~array array_kind ~index ~index_kind ~size_int
         (match_on_array_ref_kind ~array array_ref_kind
            (array_load_unsafe ~array
               ~index:(convert_index_to_tagged_int ~index ~index_kind)
@@ -1586,7 +1606,7 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
            ~new_value) ]
   | Parraysets (array_set_kind, index_kind), [[array]; [index]; [new_value]] ->
     let array_kind = convert_array_set_kind_for_length array_set_kind in
-    [ check_array_access ~dbg ~array array_kind ~index ~index_kind
+    [ check_array_access ~dbg ~array array_kind ~index ~index_kind ~size_int
         (match_on_array_set_kind ~array array_set_kind
            (array_set_unsafe ~array
               ~index:(convert_index_to_tagged_int ~index ~index_kind)
@@ -2026,4 +2046,6 @@ let convert_and_bind acc ~big_endian exn_cont ~register_const0
     convert_lprim ~big_endian prim args dbg ~current_region
       ~current_ghost_region
   in
-  H.bind_recs acc exn_cont ~register_const0 exprs dbg cont
+  H.bind_recs acc exn_cont ~register_const0
+    (H.maybe_create_unboxed_product exprs)
+    dbg cont
