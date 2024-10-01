@@ -2379,7 +2379,7 @@ let get_expr_args_array ~scopes kind head (arg, _mut, _sort, _layout) rem =
     else
       (* TODO: The resulting float should be allocated to at the mode of the
          array pattern, once that's available *)
-      let ref_kind = Lambda.(array_ref_kind alloc_heap kind) in
+      let ref_kind = Lambda.(array_ref_kind alloc_heap_unique kind) in
       let result_layout = array_ref_kind_result_layout ref_kind in
       ( Lprim
           (Parrayrefu (ref_kind, Ptagged_int_index),
@@ -3907,7 +3907,7 @@ let failure_handler ~scopes loc ~failer () =
     Lprim
       ( Praise Raise_regular,
         [ Lprim
-            ( Pmakeblock (0, Immutable, None, alloc_heap),
+            ( Pmakeblock (0, Immutable, None, alloc_heap_aliased),
               [ slot;
                 Lconst
                   (Const_block

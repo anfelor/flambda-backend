@@ -79,8 +79,8 @@ let array_kind = function
 
 let array_ref_kind ppf k =
   let pp_mode ppf = function
-    | Alloc_heap -> ()
-    | Alloc_local -> fprintf ppf "(local)"
+    | (Alloc_heap, _) -> ()
+    | (Alloc_local, _) -> fprintf ppf "(local)"
   in
   match k with
   | Pgenarray_ref mode -> fprintf ppf "gen%a" pp_mode mode
@@ -116,14 +116,19 @@ let array_set_kind ppf k =
   | Punboxedintarray_set Pint64 -> fprintf ppf "unboxed_int64"
   | Punboxedintarray_set Pnativeint -> fprintf ppf "unboxed_nativeint"
 
-let alloc_mode_if_local = function
+let locality_mode_if_local = function
   | Alloc_heap -> ""
   | Alloc_local -> "local"
 
-let alloc_mode ppf alloc_mode =
-  match alloc_mode with
+let locality_mode ppf = function
   | Alloc_heap -> fprintf ppf "heap"
   | Alloc_local -> fprintf ppf "local"
+
+let alloc_mode_if_local alloc_mode =
+  locality_mode_if_local (fst alloc_mode)
+
+let alloc_mode ppf alloc_mode =
+  locality_mode ppf (fst alloc_mode)
 
 let boxed_integer_name = function
   | Pnativeint -> "nativeint"
@@ -208,7 +213,7 @@ let layout ppf layout_ = layout' true ppf layout_
 let return_kind ppf (mode, kind) =
   let smode = alloc_mode_if_local mode in
   match kind with
-  | Pvalue Pgenval when is_heap_mode mode -> ()
+  | Pvalue Pgenval when is_heap_mode (fst mode) -> ()
   | Pvalue Pgenval -> fprintf ppf ": %s@ " smode
   | Pvalue Pintval -> fprintf ppf ": int@ "
   | Pvalue (Pboxedfloatval bf) ->
@@ -242,44 +247,47 @@ let field_kind ppf = function
         (tag_and_constructor_shape value_kind'))
       non_consts
 
-let alloc_kind = function
+let locality_kind = function
   | Alloc_heap -> ""
   | Alloc_local -> "[L]"
 
+let alloc_kind alloc_mode =
+  locality_kind (fst alloc_mode)
+
 let print_boxed_integer_conversion ppf bi1 bi2 m =
   fprintf ppf "%s_of_%s%s" (boxed_integer_name bi2) (boxed_integer_name bi1)
-    (alloc_kind m)
+    (locality_kind m)
 
 let boxed_integer_mark name bi m =
   match bi with
-  | Pnativeint -> Printf.sprintf "Nativeint.%s%s" name (alloc_kind m)
-  | Pint32 -> Printf.sprintf "Int32.%s%s" name (alloc_kind m)
-  | Pint64 -> Printf.sprintf "Int64.%s%s" name (alloc_kind m)
+  | Pnativeint -> Printf.sprintf "Nativeint.%s%s" name (locality_kind m)
+  | Pint32 -> Printf.sprintf "Int32.%s%s" name (locality_kind m)
+  | Pint64 -> Printf.sprintf "Int64.%s%s" name (locality_kind m)
 
 let print_boxed_integer name ppf bi m =
   fprintf ppf "%s" (boxed_integer_mark name bi m);;
 
 let unboxed_integer_mark name bi m =
   match bi with
-  | Pnativeint -> Printf.sprintf "Nativeint_u.%s%s" name (alloc_kind m)
-  | Pint32 -> Printf.sprintf "Int32_u.%s%s" name (alloc_kind m)
-  | Pint64 -> Printf.sprintf "Int64_u.%s%s" name (alloc_kind m)
+  | Pnativeint -> Printf.sprintf "Nativeint_u.%s%s" name (locality_kind m)
+  | Pint32 -> Printf.sprintf "Int32_u.%s%s" name (locality_kind m)
+  | Pint64 -> Printf.sprintf "Int64_u.%s%s" name (locality_kind m)
 
 let print_unboxed_integer name ppf bi m =
   fprintf ppf "%s" (unboxed_integer_mark name bi m);;
 
 let boxed_float_mark name bf m =
   match bf with
-  | Pfloat64 -> Printf.sprintf "Float.%s%s" name (alloc_kind m)
-  | Pfloat32 -> Printf.sprintf "Float32.%s%s" name (alloc_kind m)
+  | Pfloat64 -> Printf.sprintf "Float.%s%s" name (locality_kind m)
+  | Pfloat32 -> Printf.sprintf "Float32.%s%s" name (locality_kind m)
 
 let print_boxed_float name ppf bf m =
   fprintf ppf "%s" (boxed_float_mark name bf m);;
 
 let unboxed_float_mark name bf m =
   match bf with
-  | Pfloat64 -> Printf.sprintf "Float_u.%s%s" name (alloc_kind m)
-  | Pfloat32 -> Printf.sprintf "Float32_u.%s%s" name (alloc_kind m)
+  | Pfloat64 -> Printf.sprintf "Float_u.%s%s" name (locality_kind m)
+  | Pfloat32 -> Printf.sprintf "Float32_u.%s%s" name (locality_kind m)
 
 let print_unboxed_float name ppf bf m =
   fprintf ppf "%s" (unboxed_float_mark name bf m);;
@@ -334,7 +342,7 @@ let flat_element ppf : flat_element -> unit = fun x ->
 let flat_element_read ppf : flat_element_read -> unit = function
   | Flat_read flat ->
       pp_print_string ppf (Types.flat_element_to_lowercase_string flat)
-  | Flat_read_float_boxed m -> fprintf ppf "float[%a]" alloc_mode m
+  | Flat_read_float_boxed m -> fprintf ppf "float[%a]" locality_mode m
 
 let mixed_block_read ppf : mixed_block_read -> unit = function
   | Mread_value_prefix Immediate -> pp_print_string ppf "value_int"
@@ -473,7 +481,7 @@ let primitive ppf = function
       fprintf ppf "setfield_%s%s_computed" instr init
   | Pfloatfield (n, sem, mode) ->
       fprintf ppf "floatfield%a%s %i"
-        field_read_semantics sem (alloc_mode_if_local mode) n
+        field_read_semantics sem (locality_mode_if_local mode) n
   | Pufloatfield (n, sem) ->
       fprintf ppf "ufloatfield%a %i"
         field_read_semantics sem n
@@ -550,7 +558,7 @@ let primitive ppf = function
   | Pfloat32offloat m -> print_boxed_float "float32_of_float" ppf Pfloat64 m
   | Pintoffloat bf -> fprintf ppf "int_of_%s" (boxed_float_name bf)
   | Pfloatofint (bf,m) ->
-      fprintf ppf "%s_of_int%s" (boxed_float_name bf) (alloc_kind m)
+      fprintf ppf "%s_of_int%s" (boxed_float_name bf) (locality_kind m)
   | Pabsfloat (bf,m) -> print_boxed_float "abs" ppf bf m
   | Pnegfloat (bf,m) -> print_boxed_float "neg" ppf bf m
   | Paddfloat (bf,m) -> print_boxed_float "add" ppf bf m
@@ -578,9 +586,9 @@ let primitive ppf = function
   | Pmakearray (k, Immutable_unique, mode) ->
       fprintf ppf "make%sarray_unique[%s]" (alloc_mode_if_local mode)
         (array_kind k)
-  | Pduparray (k, Mutable) -> fprintf ppf "duparray[%s]" (array_kind k)
-  | Pduparray (k, Immutable) -> fprintf ppf "duparray_imm[%s]" (array_kind k)
-  | Pduparray (k, Immutable_unique) ->
+  | Pduparray (k, Mutable, _) -> fprintf ppf "duparray[%s]" (array_kind k)
+  | Pduparray (k, Immutable, _) -> fprintf ppf "duparray_imm[%s]" (array_kind k)
+  | Pduparray (k, Immutable_unique, _) ->
       fprintf ppf "duparray_unique[%s]" (array_kind k)
   | Parrayrefu (rk, idx) -> fprintf ppf "array.unsafe_get[%a indexed by %a]"
                               array_ref_kind rk
@@ -810,18 +818,55 @@ let primitive ppf = function
   | Pobj_magic _ -> fprintf ppf "obj_magic"
   | Punbox_float bf -> fprintf ppf "unbox_%s" (boxed_float_name bf)
   | Pbox_float (bf,m) ->
-      fprintf ppf "box_%s%s" (boxed_float_name bf) (alloc_kind m)
+      fprintf ppf "box_%s%s" (boxed_float_name bf) (locality_kind m)
   | Punbox_int bi -> fprintf ppf "unbox_%s" (boxed_integer_name bi)
   | Pbox_int (bi, m) ->
-      fprintf ppf "box_%s%s" (boxed_integer_name bi) (alloc_kind m)
+      fprintf ppf "box_%s%s" (boxed_integer_name bi) (locality_kind m)
 
   | Parray_to_iarray -> fprintf ppf "array_to_iarray"
   | Parray_of_iarray -> fprintf ppf "array_of_iarray"
-  | Pget_header m -> fprintf ppf "get_header%s" (alloc_kind m)
+  | Pget_header m -> fprintf ppf "get_header%s" (locality_kind m)
   | Preinterpret_tagged_int63_as_unboxed_int64 ->
       fprintf ppf "reinterpret_tagged_int63_as_unboxed_int64"
   | Preinterpret_unboxed_int64_as_tagged_int63 ->
       fprintf ppf "reinterpret_unboxed_int64_as_tagged_int63"
+
+  | Preuseblock { mut = Immutable; shape; mode } ->
+      fprintf ppf "reuse%sblock %a"
+        (alloc_mode_if_local mode) block_shape shape
+  | Preuseblock { mut = Immutable_unique; shape; mode } ->
+      fprintf ppf "reuse%sblock_unique %a"
+        (alloc_mode_if_local mode) block_shape shape
+  | Preuseblock { mut = Mutable; shape; mode } ->
+      fprintf ppf "reuse%smutable %a"
+        (alloc_mode_if_local mode) block_shape shape
+  | Preusefloatblock { mut = Immutable; mode } ->
+      fprintf ppf "reuse%sfloatblock Immutable"
+        (alloc_mode_if_local mode)
+  | Preusefloatblock { mut = Immutable_unique; mode } ->
+     fprintf ppf "reuse%sfloatblock Immutable_unique"
+        (alloc_mode_if_local mode)
+  | Preusefloatblock { mut = Mutable; mode } ->
+     fprintf ppf "reuse%sfloatblock Mutable"
+        (alloc_mode_if_local mode)
+  | Preuseufloatblock { mut = Immutable; mode } ->
+      fprintf ppf "reuse%sufloatblock Immutable"
+        (alloc_mode_if_local mode)
+  | Preuseufloatblock { mut = Immutable_unique; mode } ->
+     fprintf ppf "reuse%sufloatblock Immutable_unique"
+        (alloc_mode_if_local mode)
+  | Preuseufloatblock { mut = Mutable; mode } ->
+     fprintf ppf "reuse%sufloatblock Mutable"
+        (alloc_mode_if_local mode)
+  | Preusemixedblock { mut = Immutable; shape; mode } ->
+      fprintf ppf "reuse%amixedblock Immutable%a"
+        alloc_mode mode mixed_block_shape shape
+  | Preusemixedblock { mut = Immutable_unique; shape; mode } ->
+     fprintf ppf "reuse%amixedblock Immutable_unique%a"
+        alloc_mode mode mixed_block_shape shape
+  | Preusemixedblock { mut = Mutable; shape; mode } ->
+     fprintf ppf "reuse%amixedblock Mutable%a"
+        alloc_mode mode mixed_block_shape shape
 
 let name_of_primitive = function
   | Pbytes_of_string -> "Pbytes_of_string"
@@ -992,6 +1037,10 @@ let name_of_primitive = function
       "Preinterpret_tagged_int63_as_unboxed_int64"
   | Preinterpret_unboxed_int64_as_tagged_int63 ->
       "Preinterpret_unboxed_int64_as_tagged_int63"
+  | Preuseblock _ -> "Preuseblock"
+  | Preusefloatblock _ -> "Preusefloatblock"
+  | Preuseufloatblock _ -> "Preuseufloatblock"
+  | Preusemixedblock _ -> "Preusemixedblock"
 
 let zero_alloc_attribute ppf check =
   match check with
@@ -1069,7 +1118,7 @@ let apply_kind name pos mode =
     | Rc_nontail -> name ^ "nontail"
     | Rc_close_at_apply -> name ^ "tail"
   in
-  name ^ alloc_kind mode
+  name ^ locality_kind mode
 
 let rec lam ppf = function
   | Lvar id ->
@@ -1272,7 +1321,7 @@ and lfunction ppf {kind; params; return; body; attr; ret_mode; mode} =
           params;
         fprintf ppf ")" in
   fprintf ppf "@[<2>(function%s%a@ %a%a%a)@]"
-    (alloc_kind mode) pr_params params
+    (locality_kind mode) pr_params params
     function_attribute attr return_kind (ret_mode, return) lam body
 
 

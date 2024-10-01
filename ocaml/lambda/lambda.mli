@@ -41,9 +41,11 @@ type locality_mode = private
   | Alloc_heap
   | Alloc_local
 
-(** For now we don't have strong update, and thus uniqueness is irrelevant in
-    middle and back-end; in the future this will be extended with uniqueness *)
-type alloc_mode = locality_mode
+type uniqueness_mode = private
+  | Alloc_unique (* Might be reused *)
+  | Alloc_aliased (* No reuse *)
+
+type alloc_mode = locality_mode * uniqueness_mode
 
 type modify_mode = private
   | Modify_heap
@@ -54,11 +56,19 @@ val alloc_heap : locality_mode
 (* Actually [Alloc_heap] if [Config.stack_allocation] is [false] *)
 val alloc_local : locality_mode
 
+val alloc_aliased : uniqueness_mode
+val alloc_unique : uniqueness_mode
+
+val alloc_heap_unique : alloc_mode
+val alloc_heap_aliased : alloc_mode
+val alloc_local_unique : alloc_mode
+val alloc_local_aliased : alloc_mode
+
 val modify_heap : modify_mode
 
 val modify_maybe_stack : modify_mode
 
-val equal_alloc_mode : alloc_mode -> alloc_mode -> bool
+val todo_mode_propagation : alloc_mode -> locality_mode
 
 type initialization_or_assignment =
   (* [Assignment Alloc_local] is a mutation of a block that may be heap or local.
@@ -127,7 +137,7 @@ type primitive =
   | Pfield_computed of field_read_semantics
   | Psetfield of int * immediate_or_pointer * initialization_or_assignment
   | Psetfield_computed of immediate_or_pointer * initialization_or_assignment
-  | Pfloatfield of int * field_read_semantics * alloc_mode
+  | Pfloatfield of int * field_read_semantics * locality_mode
   | Pufloatfield of int * field_read_semantics
   | Pmixedfield of
       int * mixed_block_read * mixed_block_shape * field_read_semantics
@@ -167,16 +177,16 @@ type primitive =
   | Poffsetint of int
   | Poffsetref of int
   (* Float operations *)
-  | Pfloatoffloat32 of alloc_mode
-  | Pfloat32offloat of alloc_mode
+  | Pfloatoffloat32 of locality_mode
+  | Pfloat32offloat of locality_mode
   | Pintoffloat of boxed_float
-  | Pfloatofint of boxed_float * alloc_mode
-  | Pnegfloat of boxed_float * alloc_mode
-  | Pabsfloat of boxed_float * alloc_mode
-  | Paddfloat of boxed_float * alloc_mode
-  | Psubfloat of boxed_float * alloc_mode
-  | Pmulfloat of boxed_float * alloc_mode
-  | Pdivfloat of boxed_float * alloc_mode
+  | Pfloatofint of boxed_float * locality_mode
+  | Pnegfloat of boxed_float * locality_mode
+  | Pabsfloat of boxed_float * locality_mode
+  | Paddfloat of boxed_float * locality_mode
+  | Psubfloat of boxed_float * locality_mode
+  | Pmulfloat of boxed_float * locality_mode
+  | Pdivfloat of boxed_float * locality_mode
   | Pfloatcomp of boxed_float * float_comparison
   | Punboxed_float_comp of boxed_float * float_comparison
   (* String operations *)
@@ -184,7 +194,7 @@ type primitive =
   | Pbyteslength | Pbytesrefu | Pbytessetu | Pbytesrefs | Pbytessets
   (* Array operations *)
   | Pmakearray of array_kind * mutable_flag * alloc_mode
-  | Pduparray of array_kind * mutable_flag
+  | Pduparray of array_kind * mutable_flag * alloc_mode
   (** For [Pduparray], the argument must be an immutable array.
       The arguments of [Pduparray] give the kind and mutability of the
       array being *produced* by the duplication. *)
@@ -198,22 +208,22 @@ type primitive =
   (* Test if the (integer) argument is outside an interval *)
   | Pisout
   (* Operations on boxed integers (Nativeint.t, Int32.t, Int64.t) *)
-  | Pbintofint of boxed_integer * alloc_mode
+  | Pbintofint of boxed_integer * locality_mode
   | Pintofbint of boxed_integer
   | Pcvtbint of boxed_integer (*source*) * boxed_integer (*destination*)
-                * alloc_mode
-  | Pnegbint of boxed_integer * alloc_mode
-  | Paddbint of boxed_integer * alloc_mode
-  | Psubbint of boxed_integer * alloc_mode
-  | Pmulbint of boxed_integer * alloc_mode
-  | Pdivbint of { size : boxed_integer; is_safe : is_safe; mode: alloc_mode }
-  | Pmodbint of { size : boxed_integer; is_safe : is_safe; mode: alloc_mode }
-  | Pandbint of boxed_integer * alloc_mode
-  | Porbint of boxed_integer * alloc_mode
-  | Pxorbint of boxed_integer * alloc_mode
-  | Plslbint of boxed_integer * alloc_mode
-  | Plsrbint of boxed_integer * alloc_mode
-  | Pasrbint of boxed_integer * alloc_mode
+                * locality_mode
+  | Pnegbint of boxed_integer * locality_mode
+  | Paddbint of boxed_integer * locality_mode
+  | Psubbint of boxed_integer * locality_mode
+  | Pmulbint of boxed_integer * locality_mode
+  | Pdivbint of { size : boxed_integer; is_safe : is_safe; mode: locality_mode }
+  | Pmodbint of { size : boxed_integer; is_safe : is_safe; mode: locality_mode }
+  | Pandbint of boxed_integer * locality_mode
+  | Porbint of boxed_integer * locality_mode
+  | Pxorbint of boxed_integer * locality_mode
+  | Plslbint of boxed_integer * locality_mode
+  | Plsrbint of boxed_integer * locality_mode
+  | Pasrbint of boxed_integer * locality_mode
   | Pbintcomp of boxed_integer * integer_comparison
   | Punboxed_int_comp of unboxed_integer * integer_comparison
   (* Operations on Bigarrays: (unsafe, #dimensions, kind, layout) *)
@@ -290,7 +300,7 @@ type primitive =
   | Pctconst of compile_time_constant
   (* byte swap *)
   | Pbswap16
-  | Pbbswap of boxed_integer * alloc_mode
+  | Pbbswap of boxed_integer * locality_mode
   (* Integer to external pointer *)
   | Pint_as_pointer of alloc_mode
   (* Atomic operations *)
@@ -306,9 +316,9 @@ type primitive =
   | Pobj_dup
   | Pobj_magic of layout
   | Punbox_float of boxed_float
-  | Pbox_float of boxed_float * alloc_mode
+  | Pbox_float of boxed_float * locality_mode
   | Punbox_int of boxed_integer
-  | Pbox_int of boxed_integer * alloc_mode
+  | Pbox_int of boxed_integer * locality_mode
   | Preinterpret_unboxed_int64_as_tagged_int63
   | Preinterpret_tagged_int63_as_unboxed_int64
     (** At present [Preinterpret_unboxed_int64_as_tagged_int63] and
@@ -325,7 +335,7 @@ type primitive =
                         one; O(1) *)
   | Parray_of_iarray (* Unsafely reinterpret an immutable array as a mutable
                         one; O(1) *)
-  | Pget_header of alloc_mode
+  | Pget_header of locality_mode
   (* Get the header of a block. This primitive is invalid if provided with an
      immediate value.
      Note: The GC color bits in the header are not reliable except for checking
@@ -336,6 +346,39 @@ type primitive =
      handlers, finalizers, memprof callbacks, etc, as well as GCs and
      GC slices, so should not be moved or optimised away. *)
   | Ppoll
+  (* In-place reuse of heap blocks.
+     Each of these takes the allocation to be reused as first argument.
+     The following arguments correspond to the fields that are Reuse_set. *)
+  | Preuseblock of
+      { tag : int;             (* The immutable tag of both the old and resulting block *)
+        mut : mutable_flag;                            (* Mutability of resulting block *)
+        shape : block_shape;                          (* Block shape of resulting block *)
+        resets : reset_field list;                  (* Reset-information for each field *)
+        (* Note: even if the mode is Alloc_local, the old allocation may be on the heap *)
+        mode : alloc_mode;                             (* Alloc mode of resulting block *)
+      }
+  | Preusefloatblock of
+      { mut : mutable_flag;                            (* Mutability of resulting block *)
+        resets : reset_field list;                  (* Reset-information for each field *)
+        mode : alloc_mode               (* Upper bound on alloc mode of resulting block *)
+      }
+  | Preuseufloatblock of
+      { mut : mutable_flag;                            (* Mutability of resulting block *)
+        resets : reset_field list;                  (* Reset-information for each field *)
+        mode : alloc_mode               (* Upper bound on alloc mode of resulting block *)
+      }
+  | Preusemixedblock of
+      { tag : int;             (* The immutable tag of both the old and resulting block *)
+        mut : mutable_flag;                            (* Mutability of resulting block *)
+        shape : mixed_block_shape;                    (* Block shape of resulting block *)
+        resets : reset_field list;                  (* Reset-information for each field *)
+        (* Note: even if the mode is Alloc_local, the old allocation may be on the heap *)
+        mode : alloc_mode;                             (* Alloc mode of resulting block *)
+      }
+
+and reset_field =
+  | Reuse_set_to of value_kind
+  | Reuse_keep_old
 
 (** This is the same as [Primitive.native_repr] but with [Repr_poly]
     compiled away. *)
@@ -423,7 +466,7 @@ and flat_element = Types.flat_element =
 
 and flat_element_read = private
   | Flat_read of flat_element (* invariant: not [Float] *)
-  | Flat_read_float_boxed of alloc_mode
+  | Flat_read_float_boxed of locality_mode
 and mixed_block_read =
   | Mread_value_prefix of immediate_or_pointer
   | Mread_flat_suffix of flat_element_read
@@ -696,7 +739,7 @@ type lambda =
   | Lfor of lambda_for
   | Lassign of Ident.t * lambda
   | Lsend of meth_kind * lambda * lambda * lambda list
-             * region_close * alloc_mode * scoped_location * layout
+             * region_close * locality_mode * scoped_location * layout
   | Levent of lambda * lambda_event
   | Lifused of Ident.t * lambda
   | Lregion of lambda * layout
@@ -719,7 +762,7 @@ and lfunction = private
     body: lambda;
     attr: function_attribute; (* specified with [@inline] attribute *)
     loc : scoped_location;
-    mode : alloc_mode;     (* alloc mode of the closure itself *)
+    mode : locality_mode;     (* locality of the closure itself *)
     ret_mode: alloc_mode;
     region : bool;         (* false if this function may locally
                               allocate in the caller's region *)
@@ -744,7 +787,7 @@ and lambda_apply =
     ap_args : lambda list;
     ap_result_layout : layout;
     ap_region_close : region_close;
-    ap_mode : alloc_mode;
+    ap_mode : locality_mode;
     ap_loc : scoped_location;
     ap_tailcall : tailcall_attribute;
     ap_inlined : inlined_attribute; (* [@inlined] attribute in code *)
@@ -853,7 +896,7 @@ val lfunction :
   body:lambda ->
   attr:function_attribute -> (* specified with [@inline] attribute *)
   loc:scoped_location ->
-  mode:alloc_mode ->
+  mode:locality_mode ->
   ret_mode:alloc_mode ->
   region:bool ->
   lambda
@@ -865,7 +908,7 @@ val lfunction' :
   body:lambda ->
   attr:function_attribute -> (* specified with [@inline] attribute *)
   loc:scoped_location ->
-  mode:alloc_mode ->
+  mode:locality_mode ->
   ret_mode:alloc_mode ->
   region:bool ->
   lfunction
@@ -910,7 +953,7 @@ val get_mixed_block_element : mixed_block_shape -> int -> mixed_block_element
 
 (** Raises if [flat_element] is [Float_boxed]. *)
 val flat_read_non_float : flat_element -> flat_element_read
-val flat_read_float_boxed : alloc_mode -> flat_element_read
+val flat_read_float_boxed : locality_mode -> flat_element_read
 
 val make_sequence: ('a -> lambda) -> 'a list -> lambda
 
@@ -976,10 +1019,14 @@ val max_arity : unit -> int
 val join_mode : alloc_mode -> alloc_mode -> alloc_mode
 val sub_mode : alloc_mode -> alloc_mode -> bool
 val eq_mode : alloc_mode -> alloc_mode -> bool
-val is_local_mode : alloc_mode -> bool
-val is_heap_mode : alloc_mode -> bool
 
-val primitive_may_allocate : primitive -> alloc_mode option
+val join_locality_mode : locality_mode -> locality_mode -> locality_mode
+val sub_locality_mode : locality_mode -> locality_mode -> bool
+val eq_locality_mode : locality_mode -> locality_mode -> bool
+val is_local_mode : locality_mode -> bool
+val is_heap_mode : locality_mode -> bool
+
+val primitive_may_allocate : primitive -> locality_mode option
   (** Whether and where a primitive may allocate.
       [Some Alloc_local] permits both options: that is, primitives that
       may allocate on both the GC heap and locally report this value.
@@ -993,7 +1040,7 @@ val primitive_may_allocate : primitive -> alloc_mode option
   *)
 
 val alloc_mode_of_primitive_description :
-  external_call_description -> alloc_mode option
+  external_call_description -> locality_mode option
   (** Like [primitive_may_allocate], for [external] calls. *)
 
 (***********************)

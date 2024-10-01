@@ -955,6 +955,8 @@ let close_primitive acc env ~let_bound_ids_with_kinds named
         Misc.fatal_error "Unexpected empty float# block in [Closure_conversion]"
       | Pmakemixedblock _ ->
         Misc.fatal_error "Unexpected empty mixed block in [Closure_conversion]"
+      | Preuseblock _ | Preusefloatblock _ | Preuseufloatblock _ | Preusemixedblock _ ->
+        Location.todo_overwrite_not_implemented Location.none
       | Pmakearray (array_kind, _, _mode) ->
         let array_kind = Empty_array_kind.of_lambda array_kind in
         register_const0 acc (Static_const.empty_array array_kind) "empty_array"
@@ -2829,7 +2831,7 @@ let close_let_rec acc env ~function_declarations
     (* The closure allocation mode must be the same for all closures in the set
        of closures. *)
     List.fold_left
-      (fun (alloc_mode : Lambda.alloc_mode option) function_decl ->
+      (fun (alloc_mode : Lambda.locality_mode option) function_decl ->
         match alloc_mode, Function_decl.closure_alloc_mode function_decl with
         | None, alloc_mode -> Some alloc_mode
         | Some Alloc_heap, Alloc_heap | Some Alloc_local, Alloc_local ->
@@ -3000,7 +3002,7 @@ let wrap_partial_application acc env apply_continuation (apply : IR.apply)
     then Lambda.alloc_heap, first_complex_local_param - num_provided
     else Lambda.alloc_local, 0
   in
-  if not (Lambda.sub_mode closure_alloc_mode apply.IR.mode)
+  if not (Lambda.sub_locality_mode closure_alloc_mode apply.IR.mode)
   then
     (* This can happen in a dead GADT match case. *)
     ( acc,
@@ -3048,7 +3050,7 @@ let wrap_over_application acc env full_call (apply : IR.apply) ~remaining
   let acc, remaining = find_simples acc env remaining in
   let apply_dbg = Debuginfo.from_location apply.loc in
   let needs_region =
-    match apply.mode, (result_mode : Lambda.alloc_mode) with
+    match apply.mode, (result_mode : Lambda.locality_mode) with
     | Alloc_heap, Alloc_local ->
       let over_app_region = Variable.create "over_app_region" in
       let over_app_ghost_region = Variable.create "over_app_ghost_region" in
@@ -3175,7 +3177,7 @@ type call_args_split =
         provided_arity : [`Complex] Flambda_arity.t;
         remaining : IR.simple list;
         remaining_arity : [`Complex] Flambda_arity.t;
-        result_mode : Lambda.alloc_mode
+        result_mode : Lambda.locality_mode
       }
 
 let close_apply acc env (apply : IR.apply) : Expr_with_acc.t =

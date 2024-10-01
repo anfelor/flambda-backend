@@ -143,7 +143,7 @@ module Array_ref_kind = struct
   type t =
     | Immediates
     | Values
-    | Naked_floats_to_be_boxed of L.alloc_mode
+    | Naked_floats_to_be_boxed of L.locality_mode
     | Naked_floats
     | Naked_float32s
     | Naked_int32s
@@ -153,7 +153,7 @@ end
 
 type converted_array_ref_kind =
   | Array_ref_kind of Array_ref_kind.t
-  | Float_array_opt_dynamic_ref of L.alloc_mode
+  | Float_array_opt_dynamic_ref of L.locality_mode
 
 let convert_array_ref_kind (kind : L.array_ref_kind) : converted_array_ref_kind
     =
@@ -166,10 +166,13 @@ let convert_array_ref_kind (kind : L.array_ref_kind) : converted_array_ref_kind
        this check could be reinstated for all normal cases.
 
        check_float_array_optimisation_enabled (); *)
+    let mode = L.todo_mode_propagation mode in
     Float_array_opt_dynamic_ref mode
   | Paddrarray_ref -> Array_ref_kind Values
   | Pintarray_ref -> Array_ref_kind Immediates
-  | Pfloatarray_ref mode -> Array_ref_kind (Naked_floats_to_be_boxed mode)
+  | Pfloatarray_ref mode ->
+    let mode = L.todo_mode_propagation mode in
+    Array_ref_kind (Naked_floats_to_be_boxed mode)
   | Punboxedfloatarray_ref Pfloat64 -> Array_ref_kind Naked_floats
   | Punboxedfloatarray_ref Pfloat32 -> Array_ref_kind Naked_float32s
   | Punboxedintarray_ref Pint32 -> Array_ref_kind Naked_int32s
@@ -286,7 +289,7 @@ let untag_int (arg : H.simple_or_prim) : H.simple_or_prim =
 let unbox_float32 (arg : H.simple_or_prim) : H.simple_or_prim =
   Prim (Unary (Unbox_number K.Boxable_number.Naked_float32, arg))
 
-let box_float32 (mode : L.alloc_mode) (arg : H.expr_primitive) ~current_region :
+let box_float32 (mode : L.locality_mode) (arg : H.expr_primitive) ~current_region :
     H.expr_primitive =
   Unary
     ( Box_number
@@ -294,7 +297,7 @@ let box_float32 (mode : L.alloc_mode) (arg : H.expr_primitive) ~current_region :
           Alloc_mode.For_allocations.from_lambda mode ~current_region ),
       Prim arg )
 
-let box_float (mode : L.alloc_mode) (arg : H.expr_primitive) ~current_region :
+let box_float (mode : L.locality_mode) (arg : H.expr_primitive) ~current_region :
     H.expr_primitive =
   Unary
     ( Box_number
@@ -968,6 +971,7 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
   match prim, args with
   | Pmakeblock (tag, mutability, shape, mode), _ ->
     let args = List.flatten args in
+    let mode = L.todo_mode_propagation mode in
     let mode = Alloc_mode.For_allocations.from_lambda mode ~current_region in
     let tag = Tag.Scannable.create_exn tag in
     let shape = convert_block_shape shape ~num_fields:(List.length args) in
@@ -1005,6 +1009,7 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
     List.map (fun arg : H.expr_primitive -> Simple arg) projected_args
   | Pmakefloatblock (mutability, mode), _ ->
     let args = List.flatten args in
+    let mode = L.todo_mode_propagation mode in
     let mode = Alloc_mode.For_allocations.from_lambda mode ~current_region in
     let mutability = Mutability.from_lambda mutability in
     [ Variadic
@@ -1012,6 +1017,7 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
     ]
   | Pmakeufloatblock (mutability, mode), _ ->
     let args = List.flatten args in
+    let mode = L.todo_mode_propagation mode in
     let mode = Alloc_mode.For_allocations.from_lambda mode ~current_region in
     let mutability = Mutability.from_lambda mutability in
     [Variadic (Make_block (Naked_floats, mutability, mode), args)]
@@ -1027,13 +1033,17 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
           | Flat_suffix Float_boxed -> unbox_float arg)
         args
     in
+    let mode = L.todo_mode_propagation mode in
     let mode = Alloc_mode.For_allocations.from_lambda mode ~current_region in
     let mutability = Mutability.from_lambda mutability in
     let tag = Tag.Scannable.create_exn tag in
     let shape = K.Mixed_block_shape.from_lambda shape in
     [Variadic (Make_block (Mixed (tag, shape), mutability, mode), args)]
+  | Preuseblock _, _ | Preusefloatblock _, _ | Preuseufloatblock _, _
+  | Preusemixedblock _, _ -> Location.todo_overwrite_not_implemented Location.none
   | Pmakearray (lambda_array_kind, mutability, mode), _ -> (
     let args = List.flatten args in
+    let mode = L.todo_mode_propagation mode in
     let mode = Alloc_mode.For_allocations.from_lambda mode ~current_region in
     let array_kind = convert_array_kind lambda_array_kind in
     let mutability = Mutability.from_lambda mutability in
@@ -1286,8 +1296,9 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
   | Parraylength kind, [[arg]] ->
     let array_kind = convert_array_kind_for_length kind in
     [Unary (Array_length array_kind, arg)]
-  | Pduparray (kind, mutability), [[arg]] -> (
-    let duplicate_array_kind =
+  | Pduparray (kind, mutability, mode), [[arg]] -> (
+      let _mode = L.todo_mode_propagation mode in
+      let duplicate_array_kind =
       convert_array_kind_to_duplicate_array_kind kind
     in
     let source_mutability = Mutability.Immutable in
@@ -1341,28 +1352,36 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
     [ string_like_load ~unsafe ~dbg ~size_int ~access_size:Sixteen Bytes
         ~boxed:false None bytes ~index_kind index ~current_region ]
   | Pstring_load_32 { unsafe; index_kind; mode; boxed }, [[str]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     [ string_like_load ~unsafe ~dbg ~size_int ~access_size:Thirty_two String
         ~boxed (Some mode) str ~index_kind index ~current_region ]
   | Pstring_load_f32 { unsafe; index_kind; mode; boxed }, [[str]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     [ string_like_load ~unsafe ~dbg ~size_int ~access_size:Single String ~boxed
         (Some mode) str ~index_kind index ~current_region ]
   | Pbytes_load_32 { unsafe; index_kind; mode; boxed }, [[bytes]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     [ string_like_load ~unsafe ~dbg ~size_int ~access_size:Thirty_two Bytes
         ~boxed (Some mode) bytes ~index_kind index ~current_region ]
   | Pbytes_load_f32 { unsafe; index_kind; mode; boxed }, [[bytes]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     [ string_like_load ~unsafe ~dbg ~size_int ~access_size:Single Bytes ~boxed
         (Some mode) bytes ~index_kind index ~current_region ]
   | Pstring_load_64 { unsafe; index_kind; mode; boxed }, [[str]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     [ string_like_load ~unsafe ~dbg ~size_int ~access_size:Sixty_four String
         ~boxed (Some mode) str ~index_kind index ~current_region ]
   | Pbytes_load_64 { unsafe; index_kind; mode; boxed }, [[bytes]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     [ string_like_load ~unsafe ~dbg ~size_int ~access_size:Sixty_four Bytes
         ~boxed (Some mode) bytes ~index_kind index ~current_region ]
   | Pstring_load_128 { unsafe; index_kind; mode }, [[str]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     [ string_like_load ~unsafe ~dbg ~size_int
         ~access_size:(One_twenty_eight { aligned = false })
         String ~boxed:true (Some mode) str ~index_kind index ~current_region ]
   | Pbytes_load_128 { unsafe; index_kind; mode }, [[str]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     [ string_like_load ~unsafe ~dbg ~size_int
         ~access_size:(One_twenty_eight { aligned = false })
         Bytes ~boxed:true (Some mode) str ~index_kind index ~current_region ]
@@ -1678,6 +1697,7 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
   | Pint_as_pointer mode, [[arg]] ->
     (* This is not a stack allocation, but nonetheless has a region
        constraint. *)
+    let mode = L.todo_mode_propagation mode in
     let mode =
       Alloc_mode.For_allocations.from_lambda mode
         ~current_region:current_ghost_region
@@ -1760,18 +1780,22 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
         ~boxed:false None big_str ~index_kind index ~current_region ]
   | Pbigstring_load_32 { unsafe; index_kind; mode; boxed }, [[big_str]; [index]]
     ->
+    let mode = L.todo_mode_propagation mode in
     [ string_like_load ~unsafe ~dbg ~size_int ~access_size:Thirty_two Bigstring
         (Some mode) ~boxed big_str ~index_kind index ~current_region ]
   | Pbigstring_load_f32 { unsafe; index_kind; mode; boxed }, [[big_str]; [index]]
     ->
+    let mode = L.todo_mode_propagation mode in
     [ string_like_load ~unsafe ~dbg ~size_int ~access_size:Single Bigstring
         (Some mode) ~boxed big_str ~index_kind index ~current_region ]
   | Pbigstring_load_64 { unsafe; index_kind; mode; boxed }, [[big_str]; [index]]
     ->
+    let mode = L.todo_mode_propagation mode in
     [ string_like_load ~unsafe ~dbg ~size_int ~access_size:Sixty_four Bigstring
         (Some mode) ~boxed big_str ~index_kind index ~current_region ]
   | ( Pbigstring_load_128 { unsafe; aligned; index_kind; mode; boxed },
       [[big_str]; [index]] ) ->
+    let mode = L.todo_mode_propagation mode in
     [ string_like_load ~unsafe ~dbg ~size_int
         ~access_size:(One_twenty_eight { aligned })
         Bigstring (Some mode) ~boxed big_str ~index_kind index ~current_region
@@ -1798,25 +1822,31 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
         ~access_size:(One_twenty_eight { aligned })
         Bigstring ~boxed bigstring ~index_kind index new_value ]
   | Pfloat_array_load_128 { unsafe; mode }, [[array]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     check_float_array_optimisation_enabled "Pfloat_array_load_128";
     [ array_like_load_128 ~dbg ~size_int ~current_region ~unsafe ~mode
         Naked_floats array index ]
   | Pfloatarray_load_128 { unsafe; mode }, [[array]; [index]]
   | Punboxed_float_array_load_128 { unsafe; mode }, [[array]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     [ array_like_load_128 ~dbg ~size_int ~current_region ~unsafe ~mode
         Naked_floats array index ]
   | Punboxed_float32_array_load_128 { unsafe; mode }, [[array]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     [ array_like_load_128 ~dbg ~size_int ~current_region ~unsafe ~mode
         Naked_float32s array index ]
   | Pint_array_load_128 { unsafe; mode }, [[array]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     if Targetint.size <> 64
     then Misc.fatal_error "[Pint_array_load_128]: immediates must be 64 bits.";
     [ array_like_load_128 ~dbg ~size_int ~current_region ~unsafe ~mode
         Immediates array index ]
   | Punboxed_int64_array_load_128 { unsafe; mode }, [[array]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     [ array_like_load_128 ~dbg ~size_int ~current_region ~unsafe ~mode
         Naked_int64s array index ]
   | Punboxed_nativeint_array_load_128 { unsafe; mode }, [[array]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     if Targetint.size <> 64
     then
       Misc.fatal_error
@@ -1824,6 +1854,7 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
     [ array_like_load_128 ~dbg ~size_int ~current_region ~unsafe ~mode
         Naked_nativeints array index ]
   | Punboxed_int32_array_load_128 { unsafe; mode }, [[array]; [index]] ->
+    let mode = L.todo_mode_propagation mode in
     [ array_like_load_128 ~dbg ~size_int ~current_region ~unsafe ~mode
         Naked_int32s array index ]
   | Pfloat_array_set_128 { unsafe }, [[array]; [index]; [new_value]] ->

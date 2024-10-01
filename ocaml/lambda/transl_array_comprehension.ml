@@ -218,7 +218,7 @@ end = struct
     Lprim
       ( Praise Raise_regular,
         [ Lprim
-            ( Pmakeblock (0, Immutable, None, alloc_heap),
+            ( Pmakeblock (0, Immutable, None, alloc_heap_aliased),
               [ slot;
                 string ~loc:loc'
                   "integer overflow when precomputing the size of an array \
@@ -418,7 +418,7 @@ module Resizable_array = struct
       comprehension. *)
   let make ~loc array_kind elt =
     Lprim
-      ( Pmakearray (array_kind, Mutable, alloc_heap),
+      ( Pmakearray (array_kind, Mutable, alloc_heap_aliased),
         Misc.replicate_list elt starting_size,
         loc )
 
@@ -497,7 +497,7 @@ let iterator ~transl_exp ~scopes ~loc :
               ~return_layout:(Pvalue Pintval) pattern.pat_loc
               (Lprim
                  ( Parrayrefu
-                     ( Lambda.(array_ref_kind alloc_heap iter_arr_kind),
+                     ( Lambda.(array_ref_kind alloc_heap_aliased iter_arr_kind),
                        Ptagged_int_index ),
                    [iter_arr.var; Lvar iter_ix],
                    loc ))
@@ -691,7 +691,9 @@ let initial_array ~loc ~array_kind ~array_size ~array_sizing =
     (* Case 1: Float array optimization difficulties *)
     | (Fixed_size | Dynamic_size), Pgenarray ->
       ( Mutable,
-        Lprim (Pmakearray (Pgenarray, Immutable, Lambda.alloc_heap), [], loc) )
+        Lprim
+          (Pmakearray (Pgenarray, Immutable, Lambda.alloc_heap_aliased), [], loc)
+      )
     (* Case 2: Fixed size, known array kind *)
     | Fixed_size, (Pintarray | Paddrarray) ->
       Immutable StrictOpt, make_vect ~loc ~length:array_size.var ~init:(int 0)
@@ -875,7 +877,10 @@ let comprehension ~transl_exp ~scopes ~loc ~(array_kind : Lambda.array_kind)
            (* If the array is known to be empty, we short-circuit and return the
               empty array; all empty arrays are identical, so we don't care
               about its kind or mutability *)
-           Lprim (Pmakearray (Pgenarray, Immutable, Lambda.alloc_heap), [], loc),
+           Lprim
+             ( Pmakearray (Pgenarray, Immutable, Lambda.alloc_heap_aliased),
+               [],
+               loc ),
            (* Otherwise, we translate it normally *)
            comprehension,
            (* (And the result has the [value_kind] of the array) *)
