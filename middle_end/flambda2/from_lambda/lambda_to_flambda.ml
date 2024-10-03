@@ -1775,6 +1775,7 @@ and cps_function env ~fid ~(recursive : Recursive.t) ?precomputed_free_idents
     List.concat_map
       (fun (({ name; layout; mode; attributes } : L.lparam), kinds) :
            Function_decl.param list ->
+        let mode = L.todo_mode_propagation mode in
         match kinds with
         | [] -> []
         | [kind] -> [{ name; kind; mode; attributes }]
@@ -1819,6 +1820,7 @@ and cps_function env ~fid ~(recursive : Recursive.t) ?precomputed_free_idents
     in
     cps_tail acc new_env ccenv body body_cont body_exn_cont
   in
+  let ret_mode = L.todo_mode_propagation ret_mode in
   Function_decl.create ~let_rec_ident:(Some fid) ~function_slot ~kind ~params
     ~params_arity ~removed_params ~return ~calling_convention
     ~return_continuation:body_cont ~exn_continuation ~my_region ~my_ghost_region
