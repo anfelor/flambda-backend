@@ -434,6 +434,11 @@ and expression i ppf x =
   | Pexp_stack e ->
       line i ppf "Pexp_stack\n";
       expression i ppf e
+  | Pexp_overwrite (x, e) ->
+      line i ppf "Pexp_overwrite %a\n" fmt_longident_loc x;
+      expression i ppf e
+  | Pexp_hole ->
+      line i ppf "Pexp_hole"
 
 and jkind_annotation_opt i ppf jkind =
   match jkind with
