@@ -34,13 +34,14 @@ module Axis_pair = struct
     | "local" -> Any_axis_pair (Modal Locality, Locality.Const.Local)
     | "global" -> Any_axis_pair (Modal Locality, Locality.Const.Global)
     | "unique" -> Any_axis_pair (Modal Uniqueness, Uniqueness.Const.Unique)
-    | "shared" -> Any_axis_pair (Modal Uniqueness, Uniqueness.Const.Shared)
+    | "aliased" -> Any_axis_pair (Modal Uniqueness, Uniqueness.Const.Aliased)
     | "once" -> Any_axis_pair (Modal Linearity, Linearity.Const.Once)
     | "many" -> Any_axis_pair (Modal Linearity, Linearity.Const.Many)
     | "nonportable" ->
       Any_axis_pair (Modal Portability, Portability.Const.Nonportable)
     | "portable" -> Any_axis_pair (Modal Portability, Portability.Const.Portable)
     | "contended" -> Any_axis_pair (Modal Contention, Contention.Const.Contended)
+    | "shared" -> Any_axis_pair (Modal Contention, Contention.Const.Shared)
     | "uncontended" ->
       Any_axis_pair (Modal Contention, Contention.Const.Uncontended)
     | "maybe_null" ->
@@ -162,7 +163,7 @@ let untransl_modality (a : Modality.t) : Parsetree.modality loc =
     | Atom (Comonadic Areality, Meet_with Regionality.Const.Local) -> "local"
     | Atom (Comonadic Linearity, Meet_with Linearity.Const.Many) -> "many"
     | Atom (Comonadic Linearity, Meet_with Linearity.Const.Once) -> "once"
-    | Atom (Monadic Uniqueness, Join_with Uniqueness.Const.Shared) -> "shared"
+    | Atom (Monadic Uniqueness, Join_with Uniqueness.Const.Aliased) -> "aliased"
     | Atom (Monadic Uniqueness, Join_with Uniqueness.Const.Unique) -> "unique"
     | Atom (Comonadic Portability, Meet_with Portability.Const.Portable) ->
       "portable"
@@ -170,6 +171,7 @@ let untransl_modality (a : Modality.t) : Parsetree.modality loc =
       "nonportable"
     | Atom (Monadic Contention, Join_with Contention.Const.Contended) ->
       "contended"
+    | Atom (Monadic Contention, Join_with Contention.Const.Shared) -> "shared"
     | Atom (Monadic Contention, Join_with Contention.Const.Uncontended) ->
       "uncontended"
     | _ -> failwith "BUG: impossible modality atom"

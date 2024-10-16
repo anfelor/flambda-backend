@@ -23,8 +23,8 @@ Error: Signature mismatch:
          type ('a, 'b) t = 'a * 'a
        is not included in
          type ('a, 'b) t = 'a * 'b
-       The type 'a * 'a is not equal to the type 'a * 'b
-       Type 'a is not equal to type 'b
+       The type "'a * 'a" is not equal to the type "'a * 'b"
+       Type "'a" is not equal to type "'b"
 |}];;
 
 module M : sig
@@ -46,8 +46,8 @@ Error: Signature mismatch:
          type ('a, 'b) t = 'a * 'b
        is not included in
          type ('a, 'b) t = 'a * 'a
-       The type 'a * 'b is not equal to the type 'a * 'a
-       Type 'b is not equal to type 'a
+       The type "'a * 'b" is not equal to the type "'a * 'a"
+       Type "'b" is not equal to type "'a"
 |}];;
 
 type 'a x
@@ -56,6 +56,8 @@ module M: sig
 end = struct
   type ('b,'c,'a) t = ('b * 'c * 'a * 'c * 'a) x
 end
+(* CR reisenberg: The change here is like a change in variants_errors_test.
+   Comment over there. *)
 [%%expect{|
 type 'a x
 Lines 4-6, characters 6-3:
@@ -71,9 +73,9 @@ Error: Signature mismatch:
          type ('b, 'c, 'a) t = ('b * 'c * 'a * 'c * 'a) x
        is not included in
          type ('a, 'b, 'c) t = ('a * 'b * 'c * 'b * 'a) x
-       The type ('b * 'c * 'a * 'c * 'a) x is not equal to the type
-         ('b * 'c * 'a * 'c * 'b) x
-       Type 'a is not equal to type 'b
+       The type "('a * 'b * 'c * 'b * 'c) x" is not equal to the type
+         "('a * 'b * 'c * 'b * 'a) x"
+       Type "'c" is not equal to type "'a"
 |}]
 
 module M : sig
@@ -95,11 +97,11 @@ Error: Signature mismatch:
          type t = < m : 'a. 'a * ('a * 'b) > as 'b
        is not included in
          type t = < m : 'b. 'b * ('b * < m : 'c. 'c * 'a > as 'a) >
-       The type < m : 'a. 'a * ('a * 'd) > as 'd is not equal to the type
-         < m : 'b. 'b * ('b * < m : 'c. 'c * 'e > as 'e) >
-       The method m has type 'a. 'a * ('a * < m : 'a. 'f >) as 'f,
-       but the expected method type was 'c. 'c * ('b * < m : 'c. 'g >) as 'g
-       The universal variable 'b would escape its scope
+       The type "< m : 'a. 'a * ('a * 'd) > as 'd" is not equal to the type
+         "< m : 'b. 'b * ('b * < m : 'c. 'c * 'e > as 'e) >"
+       The method "m" has type "'a. 'a * ('a * < m : 'a. 'f >) as 'f",
+       but the expected method type was "'c. 'c * ('b * < m : 'c. 'g >) as 'g"
+       The universal variable "'b" would escape its scope
 |}];;
 
 type s = private < m : int; .. >;;
@@ -126,7 +128,7 @@ Error: Signature mismatch:
          type t = < m : int >
        is not included in
          type t = s
-       The type < m : int > is not equal to the type s
+       The type "< m : int >" is not equal to the type "s"
        The second object type has an abstract row, it cannot be closed
 |}];;
 
@@ -149,7 +151,7 @@ Error: Signature mismatch:
          type t = s
        is not included in
          type t = < m : int >
-       The type s is not equal to the type < m : int >
+       The type "s" is not equal to the type "< m : int >"
        The first object type has an abstract row, it cannot be closed
 |}];;
 
@@ -176,10 +178,10 @@ Error: Signature mismatch:
        is not included in
          type t = Foo of int * float
        Constructors do not match:
-         Foo of (int * int) * float
+         "Foo of (int * int) * float"
        is not the same as:
-         Foo of int * float
-       The type int * int is not equal to the type int
+         "Foo of int * float"
+       The type "int * int" is not equal to the type "int"
 |}];;
 
 module M : sig
@@ -201,7 +203,7 @@ Error: Signature mismatch:
          type t = int * float * int
        is not included in
          type t = int * float
-       The type int * float * int is not equal to the type int * float
+       The type "int * float * int" is not equal to the type "int * float"
 |}];;
 
 module M : sig
@@ -223,9 +225,9 @@ Error: Signature mismatch:
          type t = < f : float; n : int >
        is not included in
          type t = < m : float; n : int >
-       The type < f : float; n : int > is not equal to the type
-         < m : float; n : int >
-       The second object type has no method f
+       The type "< f : float; n : int >" is not equal to the type
+         "< m : float; n : int >"
+       The second object type has no method "f"
 |}];;
 
 module M : sig
@@ -247,8 +249,8 @@ Error: Signature mismatch:
          type t = < n : int >
        is not included in
          type t = < m : float; n : int >
-       The type < n : int > is not equal to the type < m : float; n : int >
-       The first object type has no method m
+       The type "< n : int >" is not equal to the type "< m : float; n : int >"
+       The first object type has no method "m"
 |}];;
 
 module M4 : sig
@@ -270,9 +272,10 @@ Error: Signature mismatch:
          type t = < m : int; n : int >
        is not included in
          type t = < m : float * int; n : int >
-       The type < m : int; n : int > is not equal to the type
-         < m : float * int; n : int >
-       Types for method m are incompatible
+       The type "< m : int; n : int >" is not equal to the type
+         "< m : float * int; n : int >"
+       The method "m" has type "int", but the expected method type was
+       "float * int"
 |}];;
 
 module M4 : sig
@@ -298,12 +301,12 @@ Error: Signature mismatch:
        is not included in
          type t = Foo of [ `Bar of string | `Foo of string ]
        Constructors do not match:
-         Foo of [ `Bar of string ]
+         "Foo of [ `Bar of string ]"
        is not the same as:
-         Foo of [ `Bar of string | `Foo of string ]
-       The type [ `Bar of string ] is not equal to the type
-         [ `Bar of string | `Foo of string ]
-       The first variant type does not allow tag(s) `Foo
+         "Foo of [ `Bar of string | `Foo of string ]"
+       The type "[ `Bar of string ]" is not equal to the type
+         "[ `Bar of string | `Foo of string ]"
+       The first variant type does not allow tag(s) "`Foo"
 |}];;
 
 module M : sig
@@ -325,8 +328,8 @@ Error: Signature mismatch:
          type t = private [ `C ]
        is not included in
          type t = private [ `C of int ]
-       The type [ `C ] is not equal to the type [ `C of int ]
-       Types for tag `C are incompatible
+       The type "[ `C ]" is not equal to the type "[ `C of int ]"
+       Types for tag "`C" are incompatible
 |}];;
 
 module M : sig
@@ -348,8 +351,8 @@ Error: Signature mismatch:
          type t = private [ `C of int ]
        is not included in
          type t = private [ `C ]
-       The type [ `C of int ] is not equal to the type [ `C ]
-       Types for tag `C are incompatible
+       The type "[ `C of int ]" is not equal to the type "[ `C ]"
+       Types for tag "`C" are incompatible
 |}];;
 
 module M : sig
@@ -380,7 +383,7 @@ Error: Signature mismatch:
          type t = private [ `A of int ]
        is not included in
          type t = private [> `A of int ]
-       The type [ `A of int ] is not equal to the type [> `A of int ]
+       The type "[ `A of int ]" is not equal to the type "[> `A of int ]"
        The second variant type is open and the first is not
 |}];;
 
@@ -403,7 +406,7 @@ Error: Signature mismatch:
          type t = private [> `A of int ]
        is not included in
          type t = private [ `A of int ]
-       The type [> `A of int ] is not equal to the type [ `A of int ]
+       The type "[> `A of int ]" is not equal to the type "[ `A of int ]"
        The first variant type is open and the second is not
 |}];;
 
@@ -426,9 +429,10 @@ Error: Signature mismatch:
          type 'a t = 'a constraint 'a = [> `A of int ]
        is not included in
          type 'a t = 'a constraint 'a = [> `A of int | `B of int ]
-       The type [> `A of int ] is not equal to the type
-         [> `A of int | `B of int ]
-       The first variant type does not allow tag(s) `B
+       Their parameters differ:
+       The type "[> `A of int ]" is not equal to the type
+         "[> `A of int | `B of int ]"
+       The first variant type does not allow tag(s) "`B"
 |}];;
 
 module M : sig
@@ -450,9 +454,10 @@ Error: Signature mismatch:
          type 'a t = 'a constraint 'a = [> `A of int | `C of float ]
        is not included in
          type 'a t = 'a constraint 'a = [> `A of int ]
-       The type [> `A of int | `C of float ] is not equal to the type
-         [> `A of int ]
-       The second variant type does not allow tag(s) `C
+       Their parameters differ:
+       The type "[> `A of int | `C of float ]" is not equal to the type
+         "[> `A of int ]"
+       The second variant type does not allow tag(s) "`C"
 |}];;
 
 module M : sig
@@ -526,9 +531,9 @@ Error: Modules do not match:
        val r : '_weak1 list ref ref
      is not included in
        val r : Choice.t list ref ref
-     The type '_weak1 list ref ref is not compatible with the type
-       Choice.t list ref ref
-     The type constructor Choice.t would escape its scope
+     The type "'_weak1 list ref ref" is not compatible with the type
+       "Choice.t list ref ref"
+     The type constructor "Choice.t" would escape its scope
 |}];;
 
 module O = struct
@@ -555,13 +560,13 @@ Error: Signature mismatch:
          val f : (module s/1) -> unit
        is not included in
          val f : (module s/2) -> unit
-       The type (module s/1) -> unit is not compatible with the type
-         (module s/2) -> unit
-       Type (module s/1) is not compatible with type (module s/2)
+       The type "(module s/1) -> unit" is not compatible with the type
+         "(module s/2) -> unit"
+       Type "(module s/1)" is not compatible with type "(module s/2)"
        Line 6, characters 4-17:
-         Definition of module type s/1
+         Definition of module type "s/1"
        Line 2, characters 2-15:
-         Definition of module type s/2
+         Definition of module type "s/2"
 |}];;
 
 module M : sig
@@ -583,12 +588,12 @@ Error: Signature mismatch:
          val f : (< m : 'a. 'a * 'b > as 'b) -> unit
        is not included in
          val f : < m : 'b. 'b * < m : 'c. 'c * 'a > as 'a > -> unit
-       The type (< m : 'a. 'a * 'd > as 'd) -> unit
+       The type "(< m : 'a. 'a * 'd > as 'd) -> unit"
        is not compatible with the type
-         < m : 'b. 'b * < m : 'c. 'c * 'e > as 'e > -> unit
-       The method m has type 'a. 'a * < m : 'a. 'f > as 'f,
-       but the expected method type was 'c. 'c * ('b * < m : 'c. 'g >) as 'g
-       The universal variable 'b would escape its scope
+         "< m : 'b. 'b * < m : 'c. 'c * 'e > as 'e > -> unit"
+       The method "m" has type "'a. 'a * < m : 'a. 'f > as 'f",
+       but the expected method type was "'c. 'c * ('b * < m : 'c. 'g >) as 'g"
+       The universal variable "'b" would escape its scope
 |}];;
 
 type s = private < m : int; .. >;;
@@ -613,9 +618,9 @@ Error: Signature mismatch:
          val f : < m : int > -> < m : int >
        is not included in
          val f : s -> s
-       The type < m : int > -> < m : int > is not compatible with the type
-         s -> s
-       Type < m : int > is not compatible with type s = < m : int; .. >
+       The type "< m : int > -> < m : int >" is not compatible with the type
+         "s -> s"
+       Type "< m : int >" is not compatible with type "s" = "< m : int; .. >"
        The second object type has an abstract row, it cannot be closed
 |}];;
 
@@ -638,8 +643,8 @@ Error: Signature mismatch:
          val f : 'b -> int
        is not included in
          val f : 'a -> float
-       The type 'a -> int is not compatible with the type 'a -> float
-       Type int is not compatible with type float
+       The type "'a -> int" is not compatible with the type "'a -> float"
+       Type "int" is not compatible with type "float"
 |}]
 
 module M : sig
@@ -661,8 +666,8 @@ Error: Signature mismatch:
          val x : '_weak2 list ref
        is not included in
          val x : 'a list ref
-       The type '_weak2 list ref is not compatible with the type 'a list ref
-       Type '_weak2 is not compatible with type 'a
+       The type "'_weak2 list ref" is not compatible with the type "'a list ref"
+       Type "'_weak2" is not compatible with type "'a"
 |}];;
 
 module M = struct let r = ref [] end;;
@@ -683,8 +688,8 @@ Error: Signature mismatch:
          val r : '_weak3 list ref
        is not included in
          val r : t list ref
-       The type '_weak3 list ref is not compatible with the type t list ref
-       The type constructor t would escape its scope
+       The type "'_weak3 list ref" is not compatible with the type "t list ref"
+       The type constructor "t" would escape its scope
 |}];;
 
 type (_, _) eq = Refl : ('a, 'a) eq;;
@@ -726,8 +731,8 @@ Error: Signature mismatch:
          val r : '_weak4 list ref
        is not included in
          val r : T.t list ref
-       The type '_weak4 list ref is not compatible with the type T.t list ref
-       This instance of T.t is ambiguous:
+       The type "'_weak4 list ref" is not compatible with the type "T.t list ref"
+       This instance of "T.t" is ambiguous:
        it would escape the scope of its equation
 |}];;
 
@@ -750,8 +755,8 @@ Error: Signature mismatch:
          val f : 'a -> 'a
        is not included in
          val f : int -> float
-       The type int -> int is not compatible with the type int -> float
-       Type int is not compatible with type float
+       The type "int -> int" is not compatible with the type "int -> float"
+       Type "int" is not compatible with type "float"
 |}];;
 
 module M: sig
@@ -773,9 +778,9 @@ Error: Signature mismatch:
          val f : int * int -> int * int
        is not included in
          val f : int * float * int -> int -> int
-       The type int * int -> int * int is not compatible with the type
-         int * float * int -> int -> int
-       Type int * int is not compatible with type int * float * int
+       The type "int * int -> int * int" is not compatible with the type
+         "int * float * int -> int -> int"
+       Type "int * int" is not compatible with type "int * float * int"
 |}];;
 
 module M: sig
@@ -797,10 +802,10 @@ Error: Signature mismatch:
          val f : < f : float; m : int > -> < f : float; m : int >
        is not included in
          val f : < m : int; n : float > -> < m : int; n : float >
-       The type < f : float; m : int > -> < f : float; m : int >
+       The type "< f : float; m : int > -> < f : float; m : int >"
        is not compatible with the type
-         < m : int; n : float > -> < m : int; n : float >
-       The second object type has no method f
+         "< m : int; n : float > -> < m : int; n : float >"
+       The second object type has no method "f"
 |}];;
 
 module M : sig
@@ -822,9 +827,9 @@ Error: Signature mismatch:
          val f : [ `Bar | `Foo ] -> unit
        is not included in
          val f : [ `Foo ] -> unit
-       The type [ `Bar | `Foo ] -> unit is not compatible with the type
-         [ `Foo ] -> unit
-       The second variant type does not allow tag(s) `Bar
+       The type "[ `Bar | `Foo ] -> unit" is not compatible with the type
+         "[ `Foo ] -> unit"
+       The second variant type does not allow tag(s) "`Bar"
 |}];;
 
 module M : sig
@@ -846,8 +851,8 @@ Error: Signature mismatch:
          val f : [< `Foo ] -> unit
        is not included in
          val f : [> `Foo ] -> unit
-       The type [< `Foo ] -> unit is not compatible with the type
-         [> `Foo ] -> unit
+       The type "[< `Foo ] -> unit" is not compatible with the type
+         "[> `Foo ] -> unit"
        The second variant type is open and the first is not
 |}];;
 
@@ -870,9 +875,9 @@ Error: Signature mismatch:
          val f : [< `Foo ] -> unit
        is not included in
          val f : [< `Bar | `Foo ] -> unit
-       The type [< `Foo ] -> unit is not compatible with the type
-         [< `Bar | `Foo ] -> unit
-       The first variant type does not allow tag(s) `Bar
+       The type "[< `Foo ] -> unit" is not compatible with the type
+         "[< `Bar | `Foo ] -> unit"
+       The first variant type does not allow tag(s) "`Bar"
 |}];;
 
 module M : sig
@@ -894,9 +899,10 @@ Error: Signature mismatch:
          val f : < m : 'a. [< `Foo ] as 'a > -> unit
        is not included in
          val f : < m : [< `Foo ] > -> unit
-       The type < m : 'a. [< `Foo ] as 'a > -> unit
-       is not compatible with the type < m : [< `Foo ] > -> unit
-       Types for method m are incompatible
+       The type "< m : 'a. [< `Foo ] as 'a > -> unit"
+       is not compatible with the type "< m : [< `Foo ] > -> unit"
+       The method "m" has type "'b. [< `Foo ] as 'b",
+       but the expected method type was "[< `Foo ]"
 |}];;
 
 module M : sig
@@ -918,9 +924,10 @@ Error: Signature mismatch:
          val f : < m : [ `Foo ] > -> unit
        is not included in
          val f : < m : 'a. [< `Foo ] as 'a > -> unit
-       The type < m : [ `Foo ] > -> unit is not compatible with the type
-         < m : 'a. [< `Foo ] as 'a > -> unit
-       Types for method m are incompatible
+       The type "< m : [ `Foo ] > -> unit" is not compatible with the type
+         "< m : 'a. [< `Foo ] as 'a > -> unit"
+       The method "m" has type "[ `Foo ]", but the expected method type was
+       "'b. [< `Foo ] as 'b"
 |}];;
 
 module M : sig
@@ -942,9 +949,9 @@ Error: Signature mismatch:
          val f : [< `C of int & float ] -> unit
        is not included in
          val f : [< `C ] -> unit
-       The type [< `C of & int & float ] -> unit
-       is not compatible with the type [< `C ] -> unit
-       Types for tag `C are incompatible
+       The type "[< `C of & int & float ] -> unit"
+       is not compatible with the type "[< `C ] -> unit"
+       Types for tag "`C" are incompatible
 |}];;
 
 module M : sig
@@ -966,9 +973,9 @@ Error: Signature mismatch:
          val f : [ `Foo of int ] -> unit
        is not included in
          val f : [ `Foo ] -> unit
-       The type [ `Foo of int ] -> unit is not compatible with the type
-         [ `Foo ] -> unit
-       Types for tag `Foo are incompatible
+       The type "[ `Foo of int ] -> unit" is not compatible with the type
+         "[ `Foo ] -> unit"
+       Types for tag "`Foo" are incompatible
 |}];;
 
 module M : sig
@@ -990,9 +997,9 @@ Error: Signature mismatch:
          val f : [ `Foo ] -> unit
        is not included in
          val f : [ `Foo of int ] -> unit
-       The type [ `Foo ] -> unit is not compatible with the type
-         [ `Foo of int ] -> unit
-       Types for tag `Foo are incompatible
+       The type "[ `Foo ] -> unit" is not compatible with the type
+         "[ `Foo of int ] -> unit"
+       Types for tag "`Foo" are incompatible
 |}];;
 
 module M : sig
@@ -1023,9 +1030,9 @@ Error: Signature mismatch:
          val f : [> `Bar | `Foo ] -> unit
        is not included in
          val f : [< `Bar | `Baz | `Foo ] -> unit
-       The type [> `Bar | `Foo ] -> unit is not compatible with the type
-         [< `Bar | `Baz | `Foo ] -> unit
-       The tag `Foo is guaranteed to be present in the first variant type,
+       The type "[> `Bar | `Foo ] -> unit" is not compatible with the type
+         "[< `Bar | `Baz | `Foo ] -> unit"
+       The tag "`Foo" is guaranteed to be present in the first variant type,
        but not in the second
 |}];;
 
@@ -1050,7 +1057,7 @@ Error: Signature mismatch:
          type t = [ `C ]
        is not included in
          type t = private [< `A | `B ]
-       The constructor C is only present in the second declaration.
+       The constructor "C" is only present in the second declaration.
 |}];;
 
 module M : sig
@@ -1094,7 +1101,7 @@ Error: Signature mismatch:
          type t = [ `B ]
        is not included in
          type t = private [< `A | `B > `A ]
-       The constructor A is only present in the first declaration.
+       The constructor "A" is only present in the first declaration.
 |}];;
 
 module M : sig
@@ -1206,7 +1213,7 @@ Error: Signature mismatch:
          type t = [ `A of float ]
        is not included in
          type t = private [> `A of int ]
-       The type float is not equal to the type int
+       The type "float" is not equal to the type "int"
 |}];;
 
 module M : sig
@@ -1228,8 +1235,8 @@ Error: Signature mismatch:
          type t = private [ `A | `B ]
        is not included in
          type t = private [< `A | `B ]
-       The type [ `A | `B ] is not equal to the type [< `A | `B ]
-       The tag `B is guaranteed to be present in the first variant type,
+       The type "[ `A | `B ]" is not equal to the type "[< `A | `B ]"
+       The tag "`B" is guaranteed to be present in the first variant type,
        but not in the second
 |}];;
 
@@ -1274,7 +1281,7 @@ Error: Signature mismatch:
          type t = private [< `A | `B ]
        is not included in
          type t = private [< `A | `B > `B ]
-       The tag `B is present in the the second declaration,
+       The tag "`B" is present in the the second declaration,
        but might not be in the the first
 |}];;
 
@@ -1297,7 +1304,7 @@ Error: Signature mismatch:
          type t = < b : int >
        is not included in
          type t = private < a : int; .. >
-       The implementation is missing the method a
+       The implementation is missing the method "a"
 |}];;
 
 module M : sig
@@ -1319,8 +1326,8 @@ Error: Signature mismatch:
          type t = < a : int >
        is not included in
          type t = private < a : float; .. >
-       The type int is not equal to the type float
-       Type int is not equal to type float
+       The type "int" is not equal to the type "float"
+       Type "int" is not equal to type "float"
 |}];;
 
 type w = private float
@@ -1348,8 +1355,8 @@ Error: Signature mismatch:
          type t = private u
        is not included in
          type t = private int * (int * int)
-       The type int * q is not equal to the type int * (int * int)
-       Type q is not equal to type int * int
+       The type "int * q" is not equal to the type "int * (int * int)"
+       Type "q" is not equal to type "int * int"
 |}];;
 
 type w = float
@@ -1377,9 +1384,9 @@ Error: Signature mismatch:
          type t = private u
        is not included in
          type t = private int * (int * int)
-       The type int * q is not equal to the type int * (int * int)
-       Type q = int * w is not equal to type int * int
-       Type w = float is not equal to type int
+       The type "int * q" is not equal to the type "int * (int * int)"
+       Type "q" = "int * w" is not equal to type "int * int"
+       Type "w" = "float" is not equal to type "int"
 |}];;
 
 type s = private int
@@ -1404,7 +1411,7 @@ Error: Signature mismatch:
          type t = private s
        is not included in
          type t = private float
-       The type int is not equal to the type float
+       The type "int" is not equal to the type "float"
 |}];;
 
 module M : sig
@@ -1739,12 +1746,13 @@ Error: Signature mismatch:
        is not included in
          type _ t = A : (< x : 'b > as 'b) -> (< y : 'a > as 'a) t
        Constructors do not match:
-         A : (< x : 'b * 'b > as 'b) -> (< y : 'a > as 'a) t
+         "A : (< x : 'b * 'b > as 'b) -> (< y : 'a > as 'a) t"
        is not the same as:
-         A : (< x : 'b > as 'b) -> (< y : 'a > as 'a) t
-       The type < x : 'a * 'a > as 'a is not equal to the type
-         < x : 'b > as 'b
-       Types for method x are incompatible
+         "A : (< x : 'b > as 'b) -> (< y : 'a > as 'a) t"
+       The type "< x : 'a * 'a > as 'a" is not equal to the type
+         "< x : 'b > as 'b"
+       The method "x" has type "< x : 'c > * < x : 'c > as 'c",
+       but the expected method type was "< x : 'b > as 'b"
 |}]
 module R: sig
   type t = { a: (<x:'a> as 'a) }
@@ -1766,12 +1774,13 @@ Error: Signature mismatch:
        is not included in
          type t = { a : < x : 'a > as 'a; }
        Fields do not match:
-         a : < x : 'a * 'a > as 'a;
+         "a : < x : 'a * 'a > as 'a;"
        is not the same as:
-         a : < x : 'a > as 'a;
-       The type < x : 'a * 'a > as 'a is not equal to the type
-         < x : 'b > as 'b
-       Types for method x are incompatible
+         "a : < x : 'a > as 'a;"
+       The type "< x : 'a * 'a > as 'a" is not equal to the type
+         "< x : 'b > as 'b"
+       The method "x" has type "< x : 'c > * < x : 'c > as 'c",
+       but the expected method type was "< x : 'b > as 'b"
 |}]
 type _ ext = ..
 module Ext: sig
@@ -1800,10 +1809,51 @@ Error: Signature mismatch:
        is not included in
          type _ ext += A : (< x : 'b > as 'b) -> (< y : 'a > as 'a) ext
        Constructors do not match:
-         A : (< x : 'b * 'b > as 'b) -> (< y : 'a > as 'a) ext
+         "A : (< x : 'b * 'b > as 'b) -> (< y : 'a > as 'a) ext"
        is not the same as:
-         A : (< x : 'b > as 'b) -> (< y : 'a > as 'a) ext
-       The type < x : 'a * 'a > as 'a is not equal to the type
-         < x : 'b > as 'b
-       Types for method x are incompatible
+         "A : (< x : 'b > as 'b) -> (< y : 'a > as 'a) ext"
+       The type "< x : 'a * 'a > as 'a" is not equal to the type
+         "< x : 'b > as 'b"
+       The method "x" has type "< x : 'c > * < x : 'c > as 'c",
+       but the expected method type was "< x : 'b > as 'b"
 |}]
+
+(********************************** Nested modules ****************************)
+
+(* This test ensures that the error messages for missing bindings
+   are printed in a logical order, with "In module N:" mentioned
+   in sensible places.
+ *)
+
+module M : sig
+  module N : sig
+    type t
+    val x : t
+    val y : t
+  end
+end = struct
+  module N = struct
+  end
+end
+
+[%%expect {|
+Lines 7-10, characters 6-3:
+ 7 | ......struct
+ 8 |   module N = struct
+ 9 |   end
+10 | end
+Error: Signature mismatch:
+       Modules do not match:
+         sig module N : sig end end
+       is not included in
+         sig module N : sig type t val x : t val y : t end end
+       In module "N":
+       Modules do not match:
+         sig end
+       is not included in
+         sig type t val x : t val y : t end
+       In module "N":
+       The type "t" is required but not provided
+       The value "x" is required but not provided
+       The value "y" is required but not provided
+|}];;

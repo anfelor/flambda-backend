@@ -915,11 +915,13 @@ let simplify_function_call_where_callee's_type_unavailable dacc apply
       Call_kind.indirect_function_call_unknown_arity apply_alloc_mode
     | Indirect_known_arity ->
       Call_kind.indirect_function_call_known_arity apply_alloc_mode
-    | Direct _code_id ->
-      (* Some types have regressed in precision. Since this used to be a direct
-         call, however, we know the function's arity even though we don't know
-         which function it is. *)
-      Call_kind.indirect_function_call_known_arity apply_alloc_mode
+    | Direct code_id ->
+      (* Keep the code ID if it corresponds to a simplified function, otherwise
+         demote it to avoid keeping non-simplified code alive. Keep the
+         function's arity as it is never allowed to change. *)
+      if Code_id.Set.mem code_id (DA.code_ids_never_simplified dacc)
+      then Call_kind.indirect_function_call_known_arity apply_alloc_mode
+      else Call_kind.direct_function_call code_id apply_alloc_mode
   in
   let apply = Apply_expr.with_call_kind apply call_kind in
   let dacc =
@@ -1219,9 +1221,10 @@ let simplify_effect_op dacc apply (op : Call_kind.Effect.t) ~down_to_up =
     | Run_stack { stack; f; arg } ->
       E.run_stack ~stack:(simplify_simple stack) ~f:(simplify_simple f)
         ~arg:(simplify_simple arg)
-    | Resume { stack; f; arg } ->
+    | Resume { stack; f; arg; last_fiber } ->
       E.resume ~stack:(simplify_simple stack) ~f:(simplify_simple f)
         ~arg:(simplify_simple arg)
+        ~last_fiber:(simplify_simple last_fiber)
   in
   let apply = Apply.with_call_kind apply (Call_kind.effect op) in
   let dacc, use_id =
