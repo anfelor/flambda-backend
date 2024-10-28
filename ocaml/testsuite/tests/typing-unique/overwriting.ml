@@ -12,24 +12,14 @@ let update (unique_ r : record_update) =
   let x = overwrite_ r with { x = "foo" } in
   x.x
 [%%expect{|
-Line 2, characters 10-41:
-2 |   let x = overwrite_ r with { x = "foo" } in
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ record_update -> string @@ global many = <fun>
 |}]
 
 let update (unique_ r : record_update) =
   let x = overwrite_ r with ({ x = "foo" } : record_update) in
   x.x
 [%%expect{|
-Line 2, characters 10-59:
-2 |   let x = overwrite_ r with ({ x = "foo" } : record_update) in
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ record_update -> string @@ global many = <fun>
 |}]
 
 (*************************************)
@@ -113,12 +103,9 @@ Error: This value escapes its region.
 let gc_soundness_no_bug (local_ unique_ r) x =
   exclave_ overwrite_ r with { x }
 [%%expect{|
-Line 2, characters 11-34:
-2 |   exclave_ overwrite_ r with { x }
-               ^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val gc_soundness_no_bug :
+  local_ unique_ record_update -> string -> local_ record_update @@ global
+  many = <fun>
 |}]
 
 (* This code should fail if we used a real allocation { r with x } here.
@@ -127,12 +114,9 @@ Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8:
 let returning_regional (local_ unique_ r) x =
   overwrite_ r with { x }
 [%%expect{|
-Line 2, characters 2-25:
-2 |   overwrite_ r with { x }
-      ^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val returning_regional :
+  local_ unique_ record_update -> string -> local_ record_update @@ global
+  many = <fun>
 |}]
 
 let disallowed_by_locality () x =
@@ -150,12 +134,8 @@ let returning_regional () x =
     let r = stack_ { x = ""; y = "" } in
     overwrite_ r with { x }
 [%%expect{|
-Line 4, characters 4-27:
-4 |     overwrite_ r with { x }
-        ^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val returning_regional : unit -> string -> local_ record_update @@ global
+  many = <fun>
 |}]
 
 let disallowed_by_locality () x =
@@ -182,23 +162,16 @@ Error: This value escapes its region.
 let gc_soundness_no_bug (unique_ r) x =
   exclave_ overwrite_ r with { x }
 [%%expect{|
-Line 2, characters 11-34:
-2 |   exclave_ overwrite_ r with { x }
-               ^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val gc_soundness_no_bug :
+  unique_ record_update -> string -> local_ record_update @@ global many =
+  <fun>
 |}]
 
 let gc_soundness_no_bug (unique_ r) x =
   overwrite_ r with { x }
 [%%expect{|
-Line 2, characters 2-25:
-2 |   overwrite_ r with { x }
-      ^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val gc_soundness_no_bug : unique_ record_update -> string -> record_update @@
+  global many = <fun>
 |}]
 
 (*******************************)
@@ -214,12 +187,7 @@ type 'a pair = 'a * 'a
 let update eq =
   overwrite_ eq with { eq0 = "foo" }
 [%%expect{|
-Line 2, characters 2-36:
-2 |   overwrite_ eq with { eq0 = "foo" }
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ string eq -> string eq @@ global many = <fun>
 |}]
 
 let update eq =
@@ -260,23 +228,13 @@ let update =
   let eq = { eq0 = "foo" ; eq1 = "bar" } in
   overwrite_ eq with { eq0 = 1; eq1 = 2 }
 [%%expect{|
-Line 3, characters 2-41:
-3 |   overwrite_ eq with { eq0 = 1; eq1 = 2 }
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : int eq @@ global many = {eq0 = 1; eq1 = 2}
 |}]
 
 let update : _ pair @ unique -> _ pair = function eq ->
   overwrite_ eq with ("foo", _)
 [%%expect{|
-Line 2, characters 2-31:
-2 |   overwrite_ eq with ("foo", _)
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ string pair -> string pair @@ global many = <fun>
 |}]
 
 let update : _ pair @ unique -> _ pair = function eq ->
@@ -304,12 +262,7 @@ let update : unit -> _ pair = function eq ->
   let eq : string pair = ("foo", "bar") in
   overwrite_ eq with (1, 2)
 [%%expect{|
-Line 3, characters 2-27:
-3 |   overwrite_ eq with (1, 2)
-      ^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unit -> int pair @@ global many = <fun>
 |}]
 
 (*******************************)
@@ -325,12 +278,8 @@ let update : moded_record @ unique once -> moded_record @ many =
     let many_fun : int -> int @@ many = function x -> x in
     overwrite_ mr with { a = None; b = many_fun }
 [%%expect{|
-Line 4, characters 4-49:
-4 |     overwrite_ mr with { a = None; b = many_fun }
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : once_ unique_ moded_record -> moded_record @@ global many =
+  <fun>
 |}]
 
 let update : moded_record @ unique once -> moded_record @ many =
@@ -370,12 +319,8 @@ let update : moded_record @ unique nonportable -> moded_record @ portable =
     let portable_fun : int -> int @@ portable = function x -> x in
     overwrite_ mr with { a = None; b = portable_fun }
 [%%expect{|
-Line 4, characters 4-53:
-4 |     overwrite_ mr with { a = None; b = portable_fun }
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ moded_record -> moded_record @ portable @@ global many =
+  <fun>
 |}]
 
 let update : moded_record @ unique nonportable -> moded_record @ portable =
@@ -406,12 +351,8 @@ let update : moded_record @ unique nonportable -> moded_record @ portable =
   function mr ->
     overwrite_ mr with { a = None; b = _ }
 [%%expect{|
-Line 3, characters 4-42:
-3 |     overwrite_ mr with { a = None; b = _ }
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ moded_record -> moded_record @ portable @@ global many =
+  <fun>
 |}]
 
 (* Same as above, but omitting the [b = _]. *)
@@ -419,12 +360,8 @@ let update : moded_record @ unique nonportable -> moded_record @ portable =
   function mr ->
     overwrite_ mr with { a = None }
 [%%expect{|
-Line 3, characters 4-35:
-3 |     overwrite_ mr with { a = None }
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ moded_record -> moded_record @ portable @@ global many =
+  <fun>
 |}]
 
 (*****************************************)
@@ -497,12 +434,7 @@ let update c =
   | Constr2 _ -> overwrite_ c with Constr2 { x = 2 }
 [%%expect{|
 type constr = Constr1 of { x : string; } | Constr2 of { x : int; }
-Line 5, characters 17-53:
-5 |   | Constr1 _ -> overwrite_ c with Constr1 { x = "" }
-                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ constr -> constr @@ global many = <fun>
 |}]
 
 type nested_record = Nested of { x : int }
@@ -560,12 +492,7 @@ let id = function
   | OptionA s as v -> overwrite_ v with OptionA s
   | OptionB s as v -> overwrite_ v with OptionB s
 [%%expect{|
-Line 2, characters 22-49:
-2 |   | OptionA s as v -> overwrite_ v with OptionA s
-                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val id : unique_ options -> options @@ global many = <fun>
 |}]
 
 let id v =
@@ -573,12 +500,7 @@ let id v =
   | OptionA s -> overwrite_ v with OptionA s
   | OptionB s -> overwrite_ v with OptionB s
 [%%expect{|
-Line 3, characters 17-44:
-3 |   | OptionA s -> overwrite_ v with OptionA s
-                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val id : unique_ options -> options @@ global many = <fun>
 |}]
 
 let id v =
@@ -589,12 +511,7 @@ let id v =
      | OptionB s -> overwrite_ v with OptionB s)
   | OptionB s -> overwrite_ v with OptionB s
 [%%expect{|
-Line 5, characters 20-47:
-5 |      | OptionA s -> overwrite_ v with OptionA s
-                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1106, characters 2-8: Assertion failed
-
+val id : unique_ options -> options @@ global many = <fun>
 |}]
 
 let id v =
@@ -605,12 +522,7 @@ let id v =
      | OptionB _ -> overwrite_ v with OptionA s)
   | OptionB s -> overwrite_ v with OptionB s
 [%%expect{|
-Line 5, characters 20-47:
-5 |      | OptionA _ -> overwrite_ v with OptionA s
-                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1106, characters 2-8: Assertion failed
-
+val id : unique_ options -> options @@ global many = <fun>
 |}]
 
 let swap = function
@@ -655,24 +567,14 @@ let or_patterns_good = function
   | (OptionA "foo" | OptionA "bar") as v -> overwrite_ v with OptionA "baz"
   | v -> v
 [%%expect{|
-Line 2, characters 44-75:
-2 |   | (OptionA "foo" | OptionA "bar") as v -> overwrite_ v with OptionA "baz"
-                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1106, characters 2-8: Assertion failed
-
+val or_patterns_good : unique_ options -> options @@ global many = <fun>
 |}]
 
 let or_patterns_good = function
   | ((OptionA "foo" as v) | (OptionA "bar" as v)) -> overwrite_ v with OptionA "baz"
   | v -> v
 [%%expect{|
-Line 2, characters 53-84:
-2 |   | ((OptionA "foo" as v) | (OptionA "bar" as v)) -> overwrite_ v with OptionA "baz"
-                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1106, characters 2-8: Assertion failed
-
+val or_patterns_good : unique_ options -> options @@ global many = <fun>
 |}]
 
 let or_patterns_bad = function
@@ -728,12 +630,7 @@ let guards_good = function
   | OptionB _ -> false
 [%%expect{|
 val is_option_a : options -> bool @@ global many = <fun>
-Line 8, characters 30-59:
-8 |     | Some s when is_option_a (overwrite_ v with OptionA s) -> true
-                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1106, characters 2-8: Assertion failed
-
+val guards_good : unique_ options -> bool @@ global many = <fun>
 |}]
 
 let guards_bad = function
@@ -755,12 +652,8 @@ let nested_path_correct r =
   | { x = OptionA s } -> overwrite_ r.x with OptionA s
   | _ -> OptionB ""
 [%%expect{|
-Line 3, characters 25-54:
-3 |   | { x = OptionA s } -> overwrite_ r.x with OptionA s
-                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val nested_path_correct : unique_ options_record -> options @@ global many =
+  <fun>
 |}]
 
 let nested_path_wrong r =
@@ -813,12 +706,8 @@ let tag_of_mutable_field r =
     overwrite_ r.m with OptionA s
   | _ -> OptionB ""
 [%%expect{|
-Line 4, characters 4-33:
-4 |     overwrite_ r.m with OptionA s
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1106, characters 2-8: Assertion failed
-
+val tag_of_mutable_field : unique_ options mutable_record -> options @@
+  global many = <fun>
 |}]
 
 let mutating_tag_seq r =
@@ -896,12 +785,8 @@ let mutating_tag_choice r =
             else overwrite_ r.m with OptionA s
   | _ -> OptionB ""
 [%%expect{|
-Line 5, characters 17-46:
-5 |             else overwrite_ r.m with OptionA s
-                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1106, characters 2-8: Assertion failed
-
+val mutating_tag_choice : unique_ options mutable_record -> options @@ global
+  many = <fun>
 |}]
 
 let mutating_tag_choice_parent r =
@@ -911,12 +796,8 @@ let mutating_tag_choice_parent r =
     else overwrite_ r.m.x with OptionA s
   | _ -> OptionB ""
 [%%expect{|
-Line 5, characters 9-40:
-5 |     else overwrite_ r.m.x with OptionA s
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1106, characters 2-8: Assertion failed
-
+val mutating_tag_choice_parent :
+  unique_ options_record mutable_record -> options @@ global many = <fun>
 |}]
 
 let mutating_tag_choice_seq r =
@@ -959,12 +840,8 @@ let mutating_tag_rematch r =
     end
   | _ -> OptionB ""
 [%%expect{|
-Line 7, characters 6-35:
-7 |       overwrite_ r.m with OptionB s
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1106, characters 2-8: Assertion failed
-
+val mutating_tag_rematch : unique_ options mutable_record -> options @@
+  global many = <fun>
 |}]
 
 (********************************)
@@ -979,36 +856,24 @@ let update (unique_ r : tuple_unlabeled) : tuple_unlabeled =
   let x = overwrite_ r with (_, _) in
   x
 [%%expect{|
-Line 2, characters 10-34:
-2 |   let x = overwrite_ r with (_, _) in
-              ^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ tuple_unlabeled -> tuple_unlabeled @@ global many =
+  <fun>
 |}]
 
 let update (unique_ r : tuple_unlabeled) : tuple_unlabeled =
   let x = overwrite_ r with ("foo", _) in
   x
 [%%expect{|
-Line 2, characters 10-38:
-2 |   let x = overwrite_ r with ("foo", _) in
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ tuple_unlabeled -> tuple_unlabeled @@ global many =
+  <fun>
 |}]
 
 let update (unique_ r : tuple_unlabeled) : tuple_unlabeled =
   let x = overwrite_ r with ("foo", "bar") in
   x
 [%%expect{|
-Line 2, characters 10-42:
-2 |   let x = overwrite_ r with ("foo", "bar") in
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ tuple_unlabeled -> tuple_unlabeled @@ global many =
+  <fun>
 |}]
 
 let update (unique_ r : tuple_unlabeled) : tuple_unlabeled =
@@ -1045,36 +910,21 @@ let update (unique_ r : tuple_labeled) : tuple_labeled =
   let x = overwrite_ r with (~x:(_), ~y:(_)) in
   x
 [%%expect{|
-Line 2, characters 10-44:
-2 |   let x = overwrite_ r with (~x:(_), ~y:(_)) in
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ tuple_labeled -> tuple_labeled @@ global many = <fun>
 |}]
 
 let update (unique_ r : tuple_labeled) : tuple_labeled =
   let x = overwrite_ r with (~x:"foo", ~y:(_)) in
   x
 [%%expect{|
-Line 2, characters 10-46:
-2 |   let x = overwrite_ r with (~x:"foo", ~y:(_)) in
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ tuple_labeled -> tuple_labeled @@ global many = <fun>
 |}]
 
 let update (unique_ r : tuple_labeled) : tuple_labeled =
   let x = overwrite_ r with (~x:"foo", ~y:"bar") in
   x
 [%%expect{|
-Line 2, characters 10-48:
-2 |   let x = overwrite_ r with (~x:"foo", ~y:"bar") in
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ tuple_labeled -> tuple_labeled @@ global many = <fun>
 |}]
 
 (***********************************)
@@ -1113,12 +963,8 @@ let update = function
     let x = overwrite_ c with Con { x = "foo" } in
     x
 [%%expect{|
-Line 3, characters 12-47:
-3 |     let x = overwrite_ c with Con { x = "foo" } in
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ constructor_update -> constructor_update @@ global many =
+  <fun>
 |}]
 
 let update = function
@@ -1126,12 +972,8 @@ let update = function
     let x = overwrite_ c with Con { c1 with x = "foo" } in
     x
 [%%expect{|
-Line 3, characters 12-55:
-3 |     let x = overwrite_ c with Con { c1 with x = "foo" } in
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ constructor_update -> constructor_update @@ global many =
+  <fun>
 |}]
 
 let update = function
@@ -1161,12 +1003,8 @@ let update = function
     let x = Con (overwrite_ c with { x = "foo" }) in
     x
 [%%expect{|
-Line 3, characters 16-49:
-3 |     let x = Con (overwrite_ c with { x = "foo" }) in
-                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ constructor_update -> constructor_update @@ global many =
+  <fun>
 |}]
 
 let update = function
@@ -1174,10 +1012,6 @@ let update = function
     let x = Con (overwrite_ c with { c with x = "foo" }) in
     x
 [%%expect{|
-Line 3, characters 16-56:
-3 |     let x = Con (overwrite_ c with { c with x = "foo" }) in
-                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val update : unique_ constructor_update -> constructor_update @@ global many =
+  <fun>
 |}]
