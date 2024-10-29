@@ -434,6 +434,8 @@ and expression i ppf x =
   | Pexp_stack e ->
       line i ppf "Pexp_stack\n";
       expression i ppf e
+  | Pexp_borrow li ->
+    line i ppf "Pexp_borrow %a\n" fmt_longident_loc li
 
 and jkind_annotation_opt i ppf jkind =
   match jkind with

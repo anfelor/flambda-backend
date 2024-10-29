@@ -52,7 +52,13 @@ type _ pattern_category =
 
 type unique_barrier = Mode.Uniqueness.r
 
+type access_type =
+  | Direct     (** x, M.x *)
+  | Borrowed   (** &x *)
+
 type unique_use = Mode.Uniqueness.r * Mode.Linearity.l
+
+type ident_access = access_type * unique_use
 
 type alloc_mode = {
   mode : Mode.Alloc.r;
@@ -63,9 +69,10 @@ type texp_field_boxing =
   | Boxing of alloc_mode * unique_use
   | Non_boxing of unique_use
 
-let aliased_many_use =
-  ( Mode.Uniqueness.disallow_left Mode.Uniqueness.aliased,
-    Mode.Linearity.disallow_right Mode.Linearity.many )
+let legacy_access =
+  ( Direct,
+    ( Mode.Uniqueness.disallow_left Mode.Uniqueness.aliased,
+      Mode.Linearity.disallow_right Mode.Linearity.many ))
 
 type pattern = value general_pattern
 and 'k general_pattern = 'k pattern_desc pattern_data
@@ -144,7 +151,7 @@ and arg_label = Types.arg_label =
 
 and expression_desc =
     Texp_ident of
-      Path.t * Longident.t loc * Types.value_description * ident_kind * unique_use
+      Path.t * Longident.t loc * Types.value_description * ident_kind * ident_access
   | Texp_constant of constant
   | Texp_let of rec_flag * value_binding list * expression
   | Texp_function of

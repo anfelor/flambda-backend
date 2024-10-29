@@ -262,6 +262,7 @@ type error =
   | Cannot_stack_allocate of Env.locality_context option
   | Unsupported_stack_allocation of unsupported_stack_allocation
   | Not_allocation
+  | Variable_can_not_be_borrowed
 
 exception Error of Location.t * Env.t * error
 exception Error_forward of Location.error
@@ -5187,6 +5188,9 @@ and type_expect_
       let path, (actual_mode : Env.actual_mode), desc, kind =
         type_ident env ~recarg lid
       in
+      let access () =
+        Direct, unique_use ~loc ~env actual_mode.mode (as_single_mode expected_mode)
+      in
       let exp_desc =
         match desc.val_kind with
         | Val_ivar (_, cl_num) ->
@@ -5202,13 +5206,9 @@ and type_expect_
             let (path, _) =
               Env.find_value_by_name (Longident.Lident ("self-" ^ cl_num)) env
             in
-            Texp_ident(path, lid, desc, kind,
-              unique_use ~loc ~env actual_mode.mode
-                (as_single_mode expected_mode))
+            Texp_ident(path, lid, desc, kind, access ())
         | _ ->
-            Texp_ident(path, lid, desc, kind,
-              unique_use ~loc ~env actual_mode.mode
-                (as_single_mode expected_mode))
+            Texp_ident(path, lid, desc, kind, access ())
       in
       let exp = rue {
         exp_desc; exp_loc = loc; exp_extra = [];
@@ -6506,6 +6506,30 @@ and type_expect_
       end;
       let exp_extra = (Texp_stack, loc, []) :: exp.exp_extra in
       {exp with exp_extra}
+  | Pexp_borrow lid ->
+      let (path : Path.t), (actual_mode : Env.actual_mode), desc, kind =
+        type_ident env ~recarg lid
+      in
+      begin match path with
+      | Pident _ -> ()
+      | _ -> raise (Error (loc, env, Variable_can_not_be_borrowed))
+      end;
+      let exp_desc =
+        match desc.val_kind with
+        | Val_reg ->
+          Texp_ident(path, lid, desc, kind,
+                     (Borrow, unique_use ~loc ~env actual_mode.mode
+                                (as_single_mode expected_mode)))
+        | _ -> raise (Error (loc, env, Variable_can_not_be_borrowed))
+      in
+      let exp = rue {
+        exp_desc; exp_loc = loc; exp_extra = [];
+        exp_type = desc.val_type;
+        exp_attributes = sexp.pexp_attributes;
+        exp_env = env }
+      in
+      actual_submode ~loc ~env actual_mode expected_mode;
+      exp
 
 and expression_constraint pexp =
   { type_without_constraint = (fun env expected_mode ->
@@ -10467,6 +10491,8 @@ let report_error ~loc env = function
       print_unsupported_stack_allocation category
   | Not_allocation ->
       Location.errorf ~loc "This expression is not an allocation site."
+  | Variable_can_not_be_borrowed ->
+      Location.errorf ~loc "This variable can not be borrowed."
 
 let report_error ~loc env err =
   Printtyp.wrap_printing_env_error env

@@ -326,6 +326,7 @@ let rec add_expr bv exp =
       end
   | Pexp_extension e -> handle_extension e
   | Pexp_stack e -> add_expr bv e
+  | Pexp_borrow l -> add bv l
   | Pexp_unreachable -> ()
 
 and add_expr_jane_syntax bv : Jane_syntax.Expression.t -> _ = function

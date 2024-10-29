@@ -1067,8 +1067,8 @@ The precedences must be listed from low to high.
 %nonassoc FUNCTOR                       /* include functor M */
 %right    MINUSGREATER                  /* function_type (t -> t -> t) */
 %right    OR BARBAR                     /* expr (e || e || e) */
-%nonassoc below_AMPERSAND
-%right    AMPERSAND AMPERAMPER          /* expr (e && e && e) */
+%nonassoc below_AMPERAMPER
+%right    AMPERAMPER                    /* expr (e && e && e) */
 %nonassoc below_EQUAL
 %left     INFIXOP0 EQUAL LESS GREATER   /* expr (e OP e OP e) */
 %right    ATAT AT INFIXOP1              /* expr (e OP e OP e) */
@@ -1088,7 +1088,7 @@ The precedences must be listed from low to high.
 %nonassoc below_DOT
 %nonassoc DOT DOTOP
 /* Finally, the first tokens of simple_expr are above everything else. */
-%nonassoc BACKQUOTE BANG BEGIN CHAR FALSE FLOAT HASH_FLOAT INT HASH_INT OBJECT
+%nonassoc AMPERSAND BACKQUOTE BANG BEGIN CHAR FALSE FLOAT HASH_FLOAT INT HASH_INT OBJECT
           LBRACE LBRACELESS LBRACKET LBRACKETBAR LBRACKETCOLON LIDENT LPAREN
           NEW PREFIXOP STRING TRUE UIDENT
           LBRACKETPERCENT QUOTED_STRING_EXPR STACK HASHLPAREN
@@ -2969,6 +2969,8 @@ comprehension_clause:
       { Pexp_apply($1, [Nolabel,$2]) }
   | op(BANG {"!"}) simple_expr
       { Pexp_apply($1, [Nolabel,$2]) }
+  | AMPERSAND mkrhs(val_longident)
+      { Pexp_borrow ($2) }
   | LBRACELESS object_expr_content GREATERRBRACE
       { Pexp_override $2 }
   | LBRACELESS object_expr_content error
@@ -3885,7 +3887,7 @@ jkind_desc:
   | UNDERSCORE {
       Default
     }
-  | reverse_product_jkind %prec below_AMPERSAND {
+  | reverse_product_jkind %prec below_AMPERAMPER {
       Product (List.rev $1)
     }
   | LPAREN jkind_desc RPAREN {
@@ -4802,7 +4804,6 @@ operator:
   | GREATER        {">"}
   | OR            {"or"}
   | BARBAR        {"||"}
-  | AMPERSAND      {"&"}
   | AMPERAMPER    {"&&"}
   | COLONEQUAL    {":="}
 ;

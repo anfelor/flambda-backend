@@ -579,6 +579,7 @@ module E = struct
     | Pexp_extension x -> sub.extension sub x
     | Pexp_unreachable -> ()
     | Pexp_stack e -> sub.expr sub e
+    | Pexp_borrow x -> iter_loc sub x
 
   let iter_binding_op sub {pbop_op; pbop_pat; pbop_exp; pbop_loc} =
     iter_loc sub pbop_op;

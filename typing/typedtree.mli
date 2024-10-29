@@ -69,7 +69,38 @@ type _ pattern_category =
   aliased, the projection can be aliased and moved. *)
 type unique_barrier = Mode.Uniqueness.r
 
+type access_type =
+  | Direct     (** x, M.x *)
+  | Borrowed   (** &x *)
+
 type unique_use = Mode.Uniqueness.r * Mode.Linearity.l
+
+type ident_access = access_type * unique_use
+
+(** A region barrier describes the region that surrounds a let-binding,
+    match-statement or function call. Each of these constructs is annotated
+    by a region barrier that constrains the regionality of its return value.
+    When you borrow a variable in such a region, the uniqueness analysis can
+    force the region to be global, which ends the borrow.
+    If the region barrier was forced, we need to add a region in the
+    middle-end to avoid pushing projections of borrowed values down. *)
+module Region_barrier : sig
+  type t
+
+  type resolved =
+    | Needs_region (** The middle-end needs to insert a region here *)
+    | Not_a_region (** The middle-end does not need to insert a region *)
+
+  (** Create a region with a mode variable that constraints the
+      return value of the region. *)
+  val create_possible_region : Mode.Regionality.t -> t
+
+  (** Force the stored mode variable to be global. *)
+  val force_global : t -> unit
+
+  (**  *)
+  val resolve_region : t -> resolved
+end
 
 type alloc_mode = {
   mode : Mode.Alloc.r;
@@ -84,7 +115,8 @@ type texp_field_boxing =
   (** Projection does not require boxing. [unique_use] describes the usage of
       the field as the result of direct projection. *)
 
-val aliased_many_use : unique_use
+(** A direct, aliased, many access to an identifier *)
+val legacy_access : ident_access
 
 type pattern = value general_pattern
 and 'k general_pattern = 'k pattern_desc pattern_data
@@ -260,7 +292,7 @@ and arg_label = Types.arg_label =
 *)
 and expression_desc =
     Texp_ident of
-      Path.t * Longident.t loc * Types.value_description * ident_kind * unique_use
+      Path.t * Longident.t loc * Types.value_description * ident_kind * ident_access
         (** x
             M.x
          *)

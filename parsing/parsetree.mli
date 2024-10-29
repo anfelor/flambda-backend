@@ -496,6 +496,7 @@ and expression_desc =
   | Pexp_extension of extension  (** [[%id]] *)
   | Pexp_unreachable  (** [.] *)
   | Pexp_stack of expression (** stack_ exp *)
+  | Pexp_borrow of Longident.t loc (** &x *)
 
 and case =
     {
