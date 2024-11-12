@@ -58,7 +58,27 @@ type access_type =
 
 type unique_use = Mode.Uniqueness.r * Mode.Linearity.l
 
-type ident_access = access_type * unique_use
+type ident_access = unique_use * access_type
+
+module Region_barrier = struct
+  type resolved =
+    | Needs_region
+    | Not_a_region
+  
+  type t =
+    { mode : Mode.Regionality.lr;
+      mutable resolved : resolved;
+    }
+
+  let create_possible_region r =
+    { mode = r; resolved = Not_a_region }
+
+  let enable_region t =
+    Mode.Regionality.submode_exn t.mode Mode.Regionality.global;
+    t.resolved <- Needs_region
+
+  let resolve_region t = t.resolved
+end
 
 type alloc_mode = {
   mode : Mode.Alloc.r;
@@ -70,9 +90,9 @@ type texp_field_boxing =
   | Non_boxing of unique_use
 
 let legacy_access =
-  ( Direct,
-    ( Mode.Uniqueness.disallow_left Mode.Uniqueness.aliased,
-      Mode.Linearity.disallow_right Mode.Linearity.many ))
+  ( ( Mode.Uniqueness.disallow_left Mode.Uniqueness.aliased,
+      Mode.Linearity.disallow_right Mode.Linearity.many ),
+    Direct )
 
 type pattern = value general_pattern
 and 'k general_pattern = 'k pattern_desc pattern_data

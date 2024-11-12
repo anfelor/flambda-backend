@@ -5189,7 +5189,7 @@ and type_expect_
         type_ident env ~recarg lid
       in
       let access () =
-        Direct, unique_use ~loc ~env actual_mode.mode (as_single_mode expected_mode)
+        unique_use ~loc ~env actual_mode.mode (as_single_mode expected_mode), Direct
       in
       let exp_desc =
         match desc.val_kind with
@@ -6518,8 +6518,8 @@ and type_expect_
         match desc.val_kind with
         | Val_reg ->
           Texp_ident(path, lid, desc, kind,
-                     (Borrow, unique_use ~loc ~env actual_mode.mode
-                                (as_single_mode expected_mode)))
+                     (unique_use ~loc ~env actual_mode.mode
+                                (as_single_mode expected_mode), Borrowed))
         | _ -> raise (Error (loc, env, Variable_can_not_be_borrowed))
       in
       let exp = rue {
@@ -7539,7 +7539,7 @@ and type_argument ?explanation ?recarg env (mode : expected_mode) sarg
           }
         in
         let exp_env = Env.add_value ~mode id desc env in
-        let uu = unique_use ~loc:sarg.pexp_loc ~env mode mode in
+        let uu = unique_use ~loc:sarg.pexp_loc ~env mode mode, Direct in
         {pat_desc = Tpat_var (id, mknoloc name, desc.val_uid, Value.disallow_right mode);
          pat_type = ty;
          pat_extra=[];

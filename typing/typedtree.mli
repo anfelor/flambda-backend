@@ -75,7 +75,7 @@ type access_type =
 
 type unique_use = Mode.Uniqueness.r * Mode.Linearity.l
 
-type ident_access = access_type * unique_use
+type ident_access = unique_use * access_type
 
 (** A region barrier describes the region that surrounds a let-binding,
     match-statement or function call. Each of these constructs is annotated
@@ -93,12 +93,12 @@ module Region_barrier : sig
 
   (** Create a region with a mode variable that constraints the
       return value of the region. *)
-  val create_possible_region : Mode.Regionality.t -> t
+  val create_possible_region : Mode.Regionality.lr -> t
 
-  (** Force the stored mode variable to be global. *)
-  val force_global : t -> unit
+  (** Enable the region; this forces the mode variable to be global. *)
+  val enable_region : t -> unit
 
-  (**  *)
+  (** Determine whether the middle-end needs to insert a region. *)
   val resolve_region : t -> resolved
 end
 

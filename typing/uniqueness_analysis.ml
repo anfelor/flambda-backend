@@ -69,7 +69,7 @@ end = struct
       needed. This is a list because of multiple control flows. For example, if
       a value is used aliased in one branch but unique in another branch, then
       overall the value is used uniquely (this is a "stricter" requirement).
-      Therefore, techincally, the mode this list represents is the meet of all
+      Therefore, technically, the mode this list represents is the meet of all
       modes in the lists. (recall that aliased > unique). Therefore, if this
       virtual mode needs to be forced aliased, the whole list needs to be forced
       aliased. *)
@@ -1159,7 +1159,7 @@ let open_variables ienv f =
       expr =
         (fun self e ->
           (match e.exp_desc with
-          | Texp_ident (path, _, _, _, unique_use) -> (
+          | Texp_ident (path, _, _, _, (unique_use, _)) -> (
             let occ = Occurrence.mk e.exp_loc in
             match value_of_ident ienv unique_use occ path with
             | None -> ()
