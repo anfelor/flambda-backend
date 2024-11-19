@@ -245,6 +245,7 @@ module Exp = struct
   let unreachable ?loc ?attrs () = mk ?loc ?attrs Pexp_unreachable
   let stack ?loc ?attrs e = mk ?loc ?attrs (Pexp_stack e)
   let comprehension ?loc ?attrs e = mk ?loc ?attrs (Pexp_comprehension e)
+  let borrow ?loc ?attrs e = mk ?loc ?attrs (Pexp_borrow e)
 
   let case lhs ?guard rhs =
     {

@@ -65,6 +65,7 @@ let get_level_ops : type a. a t -> (module Extension_level with type t = a) =
   | Labeled_tuples -> (module Unit)
   | Small_numbers -> (module Maturity)
   | Instances -> (module Unit)
+  | Borrowing -> (module Unit)
 
 module Exist_pair = struct
   include Exist_pair
@@ -82,6 +83,7 @@ module Exist_pair = struct
     | Pair (Labeled_tuples, ()) -> Stable
     | Pair (Small_numbers, m) -> m
     | Pair (Instances, ()) -> Stable
+    | Pair (Borrowing, ()) -> Alpha
 
   let is_erasable : t -> bool = function Pair (ext, _) -> is_erasable ext
 
@@ -94,7 +96,7 @@ module Exist_pair = struct
     | Pair
         ( (( Comprehensions | Unique | Include_functor | Polymorphic_parameters
            | Immutable_arrays | Module_strengthening | Labeled_tuples
-           | Instances ) as ext),
+           | Instances | Borrowing ) as ext),
           _ ) ->
       to_string ext
 end
@@ -134,9 +136,10 @@ let equal_t (type a b) (a : a t) (b : b t) : (a, b) Misc.eq option =
   | Labeled_tuples, Labeled_tuples -> Some Refl
   | Small_numbers, Small_numbers -> Some Refl
   | Instances, Instances -> Some Refl
+  | Borrowing, Borrowing -> Some Refl
   | ( ( Comprehensions | Mode | Unique | Include_functor
       | Polymorphic_parameters | Immutable_arrays | Module_strengthening
-      | Layouts | SIMD | Labeled_tuples | Small_numbers | Instances ),
+      | Layouts | SIMD | Labeled_tuples | Small_numbers | Instances |  Borrowing ),
       _ ) ->
     None
 

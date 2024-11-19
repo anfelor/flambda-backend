@@ -24,6 +24,7 @@ type _ t =
   | Labeled_tuples : unit t
   | Small_numbers : maturity t
   | Instances : unit t
+  | Borrowing : unit t
 
 module Exist : sig
   type 'a extn = 'a t

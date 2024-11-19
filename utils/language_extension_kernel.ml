@@ -14,6 +14,7 @@ type _ t =
   | Labeled_tuples : unit t
   | Small_numbers : maturity t
   | Instances : unit t
+  | Borrowing : unit t
 
 type 'a language_extension_kernel = 'a t
 
@@ -33,6 +34,7 @@ module Exist = struct
     ; Pack Labeled_tuples
     ; Pack Small_numbers
     ; Pack Instances
+    ; Pack Borrowing
     ]
 end
 
@@ -54,6 +56,7 @@ let to_string : type a. a t -> string = function
   | Labeled_tuples -> "labeled_tuples"
   | Small_numbers -> "small_numbers"
   | Instances -> "instances"
+  | Borrowing -> "borrowing"
 
 (* converts full extension names, like "layouts_alpha" to a pair of
    an extension and its maturity. For extensions that don't take an
@@ -79,6 +82,7 @@ let pair_of_string extn_name : Exist_pair.t option =
   | "small_numbers" -> Some (Pair (Small_numbers, Stable))
   | "small_numbers_beta" -> Some (Pair (Small_numbers, Beta))
   | "instances" -> Some (Pair (Instances, ()))
+  | "borrowing" -> Some (Pair (Borrowing, ()))
   | _ -> None
 
 let maturity_to_string = function
@@ -102,6 +106,7 @@ let of_string extn_name : Exist.t option =
 let is_erasable : type a. a t -> bool = function
   | Mode
   | Unique
+  | Borrowing
   | Layouts ->
       true
   | Comprehensions

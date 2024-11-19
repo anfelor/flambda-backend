@@ -461,6 +461,9 @@ and expression i ppf x =
   | Pexp_comprehension c ->
       line i ppf "Pexp_comprehension\n";
       comprehension_expression i ppf c
+  | Pexp_borrow e ->
+      line i ppf "Pexp_borrow\n";
+      expression i ppf e
   )
 
 and comprehension_expression i ppf = function

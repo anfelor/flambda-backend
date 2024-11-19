@@ -605,6 +605,7 @@ module E = struct
     | Pexp_unreachable -> unreachable ~loc ~attrs ()
     | Pexp_stack e -> stack ~loc ~attrs (sub.expr sub e)
     | Pexp_comprehension c -> comprehension ~loc ~attrs (map_cexp sub c)
+    | Pexp_borrow e -> borrow ~loc ~attrs (sub.expr sub e)
 
   let map_binding_op sub {pbop_op; pbop_pat; pbop_exp; pbop_loc} =
     let open Exp in

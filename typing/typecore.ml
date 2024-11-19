@@ -6499,6 +6499,8 @@ and type_expect_
         ~ty_expected
         ~attributes:sexp.pexp_attributes
         comp
+  | Pexp_borrow e ->
+      type_expect env expected_mode e ty_expected_explained
 
 and expression_constraint pexp =
   { type_without_constraint = (fun env expected_mode ->

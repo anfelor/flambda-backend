@@ -490,6 +490,7 @@ and expression_desc =
           - [BODY] is an expression.
           - [CLAUSES] is a series of [comprehension_clause].
     *)
+  | Pexp_borrow of expression
 
 and case =
     {
