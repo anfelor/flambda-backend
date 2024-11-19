@@ -1032,3 +1032,21 @@ module type S' =
     module M : sig val foo : 'a -> 'a end
   end
 |}]
+
+(*************)
+(* borrowing *)
+
+type record = { left : string; right : string }
+
+let cast_local : 'a @ local -> unit = fun x -> ()
+
+let borrow_ident a = cast_local &a
+
+let borrow_field a = cast_local &a.left
+[%%expect{|
+type record = { left : string; right : string; }
+val cast_local : ('a : value_or_null). local_ 'a -> unit @@ global many =
+  <fun>
+val borrow_ident : ('a : value_or_null). 'a -> unit @@ global many = <fun>
+val borrow_field : record -> unit @@ global many = <fun>
+|}]

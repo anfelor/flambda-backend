@@ -1084,6 +1084,8 @@ and expression ctxt f x =
           (expression ctxt) body
     | Pexp_extension e -> extension ctxt f e
     | Pexp_unreachable -> pp f "."
+    | Pexp_borrow e ->
+      pp f "@[<hov2>&@ %a@]" (expression2 reset_ctxt)  e
     | _ -> expression1 ctxt f x
 
 and expression1 ctxt f x =

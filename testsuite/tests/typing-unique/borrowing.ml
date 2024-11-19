@@ -12,95 +12,128 @@ let cast_global : 'a @ global -> unit = fun x -> ()
 let cast_local : 'a @ local -> unit = fun x -> ()
 type 'a pair = { left : 'a; right : 'a }
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val unique_id : 'a @ unique -> 'a @ unique = <fun>
+val global_id : 'a -> 'a = <fun>
+val local_id : local_ 'a -> local_ 'a = <fun>
+val cast_unique : 'a @ unique -> unit = <fun>
+val cast_global : 'a -> unit = <fun>
+val cast_local : local_ 'a -> unit = <fun>
+type 'a pair = { left : 'a; right : 'a; }
 |}]
 
 (* Basic properties of borrowing *)
 
 let borrow_is_local_okay a = cast_local &a
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_is_local_okay : 'a -> unit = <fun>
 |}]
 
 let borrow_is_local_bad a = cast_global &a
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_is_local_bad : 'a -> unit = <fun>
 |}]
 
 let borrow_requires_global_region_okay a = cast_local &a
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_requires_global_region_okay : 'a -> unit = <fun>
 |}]
 
 let borrow_requires_global_region_bad a = local_id &a
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+Line 1, characters 42-53:
+1 | let borrow_requires_global_region_bad a = local_id &a
+                                              ^^^^^^^^^^^
+Error: This value escapes its region.
+  Hint: Cannot return a local value without an "exclave_" annotation.
 |}]
 
 let borrow_may_be_unique_okay a = cast_unique &a
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_may_be_unique_okay : 'a @ unique -> unit = <fun>
 |}]
 
 let borrow_may_be_unique_bad a = cast_unique (&a, &a)
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+Line 1, characters 51-52:
+1 | let borrow_may_be_unique_bad a = cast_unique (&a, &a)
+                                                       ^
+Error: This value is used here, but it has already been used as unique:
+Line 1, characters 47-48:
+1 | let borrow_may_be_unique_bad a = cast_unique (&a, &a)
+                                                   ^
+
 |}]
 
 let borrow_may_be_aliased_okay a = cast_local (&a, a)
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_may_be_aliased_okay : 'a -> unit = <fun>
 |}]
 
 let borrow_may_be_aliased_okay a = cast_local (a, &a)
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_may_be_aliased_okay : 'a -> unit = <fun>
 |}]
 
 let borrow_may_be_duplicated_okay a = cast_local (&a, &a)
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_may_be_duplicated_okay : 'a -> unit = <fun>
 |}]
 
 let borrow_stays_once_bad (once_ a) = cast_local (&a, &a)
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+Line 1, characters 51-52:
+1 | let borrow_stays_once_bad (once_ a) = cast_local (&a, &a)
+                                                       ^
+Error: This value is "once" but expected to be "many".
 |}]
 
 (* Projections *)
 
 let borrowing_projection_okay a =
-  let l = &a.left in
+  let _l = &a.left in
   cast_unique &a.right
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrowing_projection_okay : 'a pair @ unique -> unit = <fun>
 |}]
 
 let borrowing_projection_bad a =
-  let l = &a.left in
+  let _l = &a.left in
   cast_unique &a.left
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrowing_projection_bad : 'a pair @ unique -> unit = <fun>
 |}]
 
 let borrow_may_be_unique_okay a = cast_unique (&a.left, &a.right)
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_may_be_unique_okay : 'a pair @ unique -> unit = <fun>
 |}]
 
 let borrow_may_be_unique_bad a = cast_unique (&a.left, &a.left)
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+Line 1, characters 56-62:
+1 | let borrow_may_be_unique_bad a = cast_unique (&a.left, &a.left)
+                                                            ^^^^^^
+Error: This value is used here, but it has already been used as unique:
+Line 1, characters 47-53:
+1 | let borrow_may_be_unique_bad a = cast_unique (&a.left, &a.left)
+                                                   ^^^^^^
+
 |}]
 
 let borrow_stays_once_okay (once_ a) = cast_local (&a.left, &a.right)
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+Line 1, characters 52-58:
+1 | let borrow_stays_once_okay (once_ a) = cast_local (&a.left, &a.right)
+                                                        ^^^^^^
+Error: This value is "once" but expected to be "many".
 |}]
 
 let borrow_stays_once_bad (once_ a) = cast_local (&a.left, &a.left)
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+Line 1, characters 51-57:
+1 | let borrow_stays_once_bad (once_ a) = cast_local (&a.left, &a.left)
+                                                       ^^^^^^
+Error: This value is "once" but expected to be "many".
 |}]
 
 (* Let-based regions *)
@@ -109,50 +142,54 @@ let borrow_could_escape a =
   let x = &a
   in x
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_could_escape : 'a -> 'a = <fun>
 |}]
 
 let borrow_does_not_escape a =
   let x = &a; ()
   in x
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_does_not_escape : 'a -> unit = <fun>
 |}]
 
 let borrow_could_escape a =
-  let x = escaping_id &a
+  let x = global_id &a
   in x
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_could_escape : 'a -> 'a = <fun>
 |}]
 
 let borrow_could_escape a =
-  let x = escaping_id &a; ()
+  let x = global_id &a; ()
   in x
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_could_escape : 'a -> unit = <fun>
 |}]
 
 let borrow_could_escape a =
   let x = local_id &a
   in x
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+Line 3, characters 5-6:
+3 |   in x
+         ^
+Error: This value escapes its region.
+  Hint: Cannot return a local value without an "exclave_" annotation.
 |}]
 
 let borrow_does_not_escape a =
   let x = local_id &a; ()
   in x
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_does_not_escape : 'a -> unit = <fun>
 |}]
 
 (* Match-based regions *)
 
 let borrow_and_unique a =
   match &a with
-   | { l; r } when r = "" -> cast_local l
-   | { l; _ } -> cast_unique l
+   | { left; right } when right = "" -> cast_local left
+   | { left; _ } -> cast_unique left
 [%%expect{|
-val aliased_id : 'a -> 'a = <fun>
+val borrow_and_unique : string pair @ unique -> unit = <fun>
 |}]

@@ -1099,7 +1099,6 @@ The precedences must be listed from low to high.
 %nonassoc FUNCTOR                       /* include functor M */
 %right    MINUSGREATER                  /* function_type (t -> t -> t) */
 %right    OR BARBAR                     /* expr (e || e || e) */
-%nonassoc below_AMPERAMPER
 %right    AMPERAMPER                    /* expr (e && e && e) */
 %nonassoc below_EQUAL
 %left     INFIXOP0 EQUAL LESS GREATER   /* expr (e OP e OP e) */
@@ -1110,6 +1109,8 @@ The precedences must be listed from low to high.
 %left     INFIXOP2 PLUS PLUSDOT MINUS MINUSDOT PLUSEQ /* expr (e OP e OP e) */
 %left     PERCENT INFIXOP3 MOD STAR                 /* expr (e OP e OP e) */
 %right    INFIXOP4                      /* expr (e OP e OP e) */
+%nonassoc below_AMPERSAND
+%right    AMPERSAND                     /* expr (&e) */
 %nonassoc prec_unboxed_product_kind
 %nonassoc prec_unary_minus prec_unary_plus /* unary - */
 %nonassoc prec_constant_constructor     /* cf. simple_expr (C versus C x) */
@@ -1120,7 +1121,6 @@ The precedences must be listed from low to high.
 %nonassoc below_DOT
 %nonassoc DOT DOTOP
 /* Finally, the first tokens of simple_expr are above everything else. */
-%right    AMPERSAND
 %nonassoc BACKQUOTE BANG BEGIN CHAR FALSE FLOAT HASH_FLOAT INT HASH_INT OBJECT
           LBRACE LBRACELESS LBRACKET LBRACKETBAR LBRACKETCOLON LIDENT LPAREN
           NEW PREFIXOP STRING TRUE UIDENT
@@ -3920,7 +3920,7 @@ jkind_desc:
   | UNDERSCORE {
       Default
     }
-  | reverse_product_jkind %prec below_AMPERAMPER {
+  | reverse_product_jkind %prec below_AMPERSAND {
       Product (List.rev $1)
     }
   | LPAREN jkind_desc RPAREN {
