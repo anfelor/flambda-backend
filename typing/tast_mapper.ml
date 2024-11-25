@@ -437,30 +437,29 @@ let expr sub x =
     | Texp_ident (path, lid, vd, idk, uu) ->
         Texp_ident (path, map_loc sub lid, vd, idk, uu)
     | Texp_constant _ as d -> d
-    | Texp_let (rec_flag, list, exp) ->
+    | Texp_let (rec_flag, list, exp, barrier) ->
         let (rec_flag, list) = sub.value_bindings sub (rec_flag, list) in
-        Texp_let (rec_flag, list, sub.expr sub exp)
-    | Texp_function { params; body; alloc_mode; ret_mode; ret_sort;
-                      zero_alloc } ->
+        Texp_let (rec_flag, list, sub.expr sub exp, barrier)
+    | Texp_function { params; body; alloc_mode; ret_mode; ret_sort; zero_alloc } ->
         let params = List.map (function_param sub) params in
         let body = function_body sub body in
-        Texp_function { params; body; alloc_mode; ret_mode; ret_sort;
-                        zero_alloc }
-    | Texp_apply (exp, list, pos, am, za) ->
+        Texp_function { params; body; alloc_mode; ret_mode; ret_sort; zero_alloc }
+    | Texp_apply (exp, list, pos, am, za, rb) ->
         Texp_apply (
           sub.expr sub exp,
           List.map (function
             | (lbl, Arg (exp, sort)) -> (lbl, Arg (sub.expr sub exp, sort))
             | (lbl, Omitted o) -> (lbl, Omitted o))
             list,
-          pos, am, za
+          pos, am, za, rb
         )
-    | Texp_match (exp, sort, cases, p) ->
+    | Texp_match (exp, sort, cases, p, region_barrier) ->
         Texp_match (
           sub.expr sub exp,
           sort,
           List.map (sub.case sub) cases,
-          p
+          p,
+          region_barrier
         )
     | Texp_try (exp, cases) ->
         Texp_try (
@@ -601,6 +600,8 @@ let expr sub x =
     | Texp_exclave exp ->
         Texp_exclave (sub.expr sub exp)
     | Texp_src_pos -> Texp_src_pos
+    | Texp_borrow exp ->
+        Texp_borrow (sub.expr sub exp)
   in
   let exp_attributes = sub.attributes sub x.exp_attributes in
   {x with exp_loc; exp_extra; exp_desc; exp_env; exp_attributes}

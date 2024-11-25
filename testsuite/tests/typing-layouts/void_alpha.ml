@@ -433,9 +433,9 @@ let _ = assert (List.for_all2 (=) !r [6;5;4;3;2;1]);;
 [%%expect{|
 type void_holder = V of t_void
 type vh_formagic = VM
-Line 5, characters 4-6:
+Line 5, characters 23-35:
 5 | let vh : void_holder = Obj.magic VM
-        ^^
+                           ^^^^^^^^^^^^
 Error: Non-value detected in [value_kind].
        Please report this error to the Jane Street compilers team.
        The layout of t_void is void

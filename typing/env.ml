@@ -3531,7 +3531,7 @@ let lookup_value ~errors ~use ~loc lid env =
   (* There can be locks between the definition and a use of a value. For
   example, if a function closes over a value, there will be Closure_lock between
   the value's definition and the value's use in the function. Walking the locks
-  will constrain the function and the value's modes accrodingly.
+  will constrain the function and the value's modes accordingly.
 
   Here, we apply the modalities to acquire the mode of the value at the
   definition site, using which we walk the locks. That means the surrounding

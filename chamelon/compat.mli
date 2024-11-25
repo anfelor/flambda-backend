@@ -40,6 +40,7 @@ type texp_function = {
 }
 
 type texp_ident_identifier
+type texp_let_identifier
 type texp_apply_identifier
 type texp_tuple_identifier
 type texp_construct_identifier
@@ -50,6 +51,11 @@ type texp_match_identifier
 val mkTexp_ident :
   ?id:texp_ident_identifier ->
   Path.t * Longident.t Location.loc * value_description ->
+  expression_desc
+
+val mkTexp_let :
+  ?id:texp_let_identifier ->
+  Asttypes.rec_flag * value_binding list * expression ->
   expression_desc
 
 val mkTexp_apply :
@@ -87,6 +93,8 @@ type matched_expression_desc =
       * Longident.t Location.loc
       * value_description
       * texp_ident_identifier
+  | Texp_let of
+      Asttypes.rec_flag * value_binding list * expression * texp_let_identifier
   | Texp_apply of
       expression * (Asttypes.arg_label * apply_arg) list * texp_apply_identifier
   | Texp_construct of

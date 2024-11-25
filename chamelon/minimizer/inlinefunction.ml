@@ -33,8 +33,8 @@ let find_function id1 str =
           | _ -> str_it);
       expr =
         (fun mapper e ->
-          match e.exp_desc with
-          | Texp_let (_, vb_l, e) ->
+          match view_texp e.exp_desc with
+          | Texp_let (_, vb_l, e, _id) ->
               let vb1 =
                 List.filter
                   (fun vb ->

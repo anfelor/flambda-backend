@@ -229,6 +229,33 @@ let match_anf_unique r =
 val match_anf_unique : record @ unique -> record * string = <fun>
 |}]
 
+let proj_fun r =
+  let y = r.y in
+  let r = fun () -> y in
+  r
+[%%expect{|
+(let
+  (proj_fun/352 =
+     (function {nlocal = 0} r/354[(consts ()) (non_consts ([0: *, *]))]
+       (let (y/355 = (field_imm 1 r/354))
+         (function {nlocal = 0} param/357[int] y/355))))
+  (apply (field_imm 1 (global Toploop!)) "proj_fun" proj_fun/352))
+val proj_fun : record -> unit -> string = <fun>
+|}]
+
+let proj_fun r =
+  match r with
+  | { y } -> fun () -> y
+[%%expect{|
+(let
+  (proj_fun/358 =
+     (function {nlocal = 0} r/359[(consts ()) (non_consts ([0: *, *]))]
+       (let (y/360 =a (field_imm 1 r/359))
+         (function {nlocal = 0} param/361[int] y/360))))
+  (apply (field_imm 1 (global Toploop!)) "proj_fun" proj_fun/358))
+val proj_fun : record -> unit -> string = <fun>
+|}]
+
 type tree =
   | Leaf
   | Node of { l : tree; x : int; r : tree }
@@ -251,9 +278,9 @@ let swap_inner (t : tree) =
   | _ -> t
 [%%expect{|
 (let
-  (swap_inner/358 =
+  (swap_inner/369 =
      (function {nlocal = 0}
-       t/360[(consts (0))
+       t/371[(consts (0))
              (non_consts ([0: [(consts (0)) (non_consts ([0: *, [int], *]))],
                            [int],
                            [(consts (0)) (non_consts ([0: *, [int], *]))]]))]
@@ -261,11 +288,11 @@ let swap_inner (t : tree) =
         (non_consts ([0: [(consts (0)) (non_consts ([0: *, [int], *]))],
                       [int], [(consts (0)) (non_consts ([0: *, [int], *]))]]))]
        (catch
-         (if t/360
-           (let (*match*/369 =a (field_imm 0 t/360))
-             (if *match*/369
-               (let (*match*/373 =a (field_imm 2 t/360))
-                 (if *match*/373
+         (if t/371
+           (let (*match*/380 =a (field_imm 0 t/371))
+             (if *match*/380
+               (let (*match*/384 =a (field_imm 2 t/371))
+                 (if *match*/384
                    (makeblock 0 ([(consts (0))
                                   (non_consts ([0:
                                                 [(consts (0))
@@ -296,9 +323,9 @@ let swap_inner (t : tree) =
                                       [int],
                                       [(consts (0))
                                        (non_consts ([0: *, [int], *]))]]))])
-                       (field_imm 0 *match*/369) (field_int 1 *match*/369)
-                       (field_imm 0 *match*/373))
-                     (field_int 1 t/360)
+                       (field_imm 0 *match*/380) (field_int 1 *match*/380)
+                       (field_imm 0 *match*/384))
+                     (field_int 1 t/371)
                      (makeblock 0 ([(consts (0))
                                     (non_consts ([0:
                                                   [(consts (0))
@@ -315,13 +342,13 @@ let swap_inner (t : tree) =
                                       [int],
                                       [(consts (0))
                                        (non_consts ([0: *, [int], *]))]]))])
-                       (field_imm 2 *match*/369) (field_int 1 *match*/373)
-                       (field_imm 2 *match*/373)))
+                       (field_imm 2 *match*/380) (field_int 1 *match*/384)
+                       (field_imm 2 *match*/384)))
                    (exit 19)))
                (exit 19)))
            (exit 19))
-        with (19) t/360)))
-  (apply (field_imm 1 (global Toploop!)) "swap_inner" swap_inner/358))
+        with (19) t/371)))
+  (apply (field_imm 1 (global Toploop!)) "swap_inner" swap_inner/369))
 val swap_inner : tree -> tree = <fun>
 |}]
 

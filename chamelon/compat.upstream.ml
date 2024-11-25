@@ -9,6 +9,10 @@ type texp_ident_identifier = unit
 let mkTexp_ident ?id:(() = ()) (path, longident, vd) =
   Texp_ident (path, longident, vd)
 
+type texp_let_identifier = unit
+
+let mkTexp_let ?id:(() = ()) (rf, vb_l, e) = Texp_let (rf, vb_l, e)
+
 type nonrec apply_arg = expression option
 type texp_apply_identifier = unit
 
@@ -116,6 +120,8 @@ type matched_expression_desc =
       * Longident.t Location.loc
       * value_description
       * texp_ident_identifier
+  | Texp_let of
+      Asttypes.rec_flag * value_binding list * expression * texp_let_identifier
   | Texp_apply of
       expression * (Asttypes.arg_label * apply_arg) list * texp_apply_identifier
   | Texp_construct of
@@ -133,6 +139,7 @@ type matched_expression_desc =
 let rec view_texp (e : expression_desc) =
   match e with
   | Texp_ident (path, longident, vd) -> Texp_ident (path, longident, vd, ())
+  | Texp_let (rf, vb_l, e) -> Texp_let (rf, vb_l, e, ())
   | Texp_apply (exp, args) -> Texp_apply (exp, args, ())
   | Texp_construct (name, desc, args) -> Texp_construct (name, desc, args, ())
   | Texp_tuple args -> Texp_tuple (args, ())

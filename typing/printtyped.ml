@@ -469,7 +469,7 @@ and expression i ppf x =
   | Texp_ident (li,_,_,_,_) -> line i ppf "Texp_ident %a\n" fmt_path li;
   | Texp_instvar (_, li,_) -> line i ppf "Texp_instvar %a\n" fmt_path li;
   | Texp_constant (c) -> line i ppf "Texp_constant %a\n" fmt_constant c;
-  | Texp_let (rf, l, e) ->
+  | Texp_let (rf, l, e, _) ->
       line i ppf "Texp_let %a\n" fmt_rec_flag rf;
       list i (value_binding rf) ppf l;
       expression i ppf e;
@@ -478,7 +478,7 @@ and expression i ppf x =
       alloc_mode i ppf am;
       list i function_param ppf params;
       function_body i ppf body;
-  | Texp_apply (e, l, m, am, za) ->
+  | Texp_apply (e, l, m, am, za, _) ->
       line i ppf "Texp_apply\n";
       line i ppf "apply_mode %s\n"
         (match m with
@@ -489,7 +489,7 @@ and expression i ppf x =
       Option.iter (zero_alloc_assume i ppf) za;
       expression i ppf e;
       list i label_x_apply_arg ppf l;
-  | Texp_match (e, sort, l, partial) ->
+  | Texp_match (e, sort, l, partial, _) ->
       line i ppf "Texp_match%a\n"
         fmt_partiality partial;
       expression i ppf e;
@@ -626,7 +626,10 @@ and expression i ppf x =
       line i ppf "Texp_exclave";
       expression i ppf e;
   | Texp_src_pos ->
-    line i ppf "Texp_src_pos"
+      line i ppf "Texp_src_pos"
+  | Texp_borrow e ->
+      line i ppf "Texp_borrow";
+      expression i ppf e;
 
 and value_description i ppf x =
   line i ppf "value_description %a %a\n" fmt_ident x.val_id fmt_location

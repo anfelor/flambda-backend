@@ -84,6 +84,37 @@ end
 
 type unique_use = Mode.Uniqueness.r * Mode.Linearity.l
 
+(** A region barrier describes the region that surrounds a let-binding,
+    match-statement or function call. Each of these constructs is annotated
+    by a region barrier that constrains the regionality of its return value.
+    When you borrow a variable in such a region, the uniqueness analysis can
+    force the region to be global, which ends the borrow.
+    If the region barrier was forced, we need to add a region in the
+    middle-end to avoid pushing projections of borrowed values down. *)
+module Region_barrier : sig
+  type t
+
+  type resolved =
+    | Needs_region (** The middle-end needs to insert a region here *)
+    | Not_a_region (** The middle-end does not need to insert a region *)
+
+  (** Create a region with a mode variable that constraints the
+      return value of the region. *)
+  val create : Mode.Regionality.lr -> t
+
+  (** A dummy region barrier. This should only be used for typed expressions
+      that are not used to generate code, eg. in chamelon or merlin. *)
+  val none : unit -> t
+
+  (** Enable the barrier to indicate that a variable was borrowed inside.
+      The barrier now resolves to 'Needs_region'. This also forces the stored
+      mode variable to be global and can thus lead to a mode-error. *)
+  val enable : t -> (unit, Mode.Regionality.error) result
+
+  (** Lookup whether the the region was enabled. *)
+  val resolve : t -> resolved
+end
+
 type alloc_mode = {
   mode : Mode.Alloc.r;
   locality_context : Env.locality_context option;
@@ -282,7 +313,7 @@ and expression_desc =
          *)
   | Texp_constant of constant
         (** 1, 'a', "true", 1.0, 1l, 1L, 1n *)
-  | Texp_let of rec_flag * value_binding list * expression
+  | Texp_let of rec_flag * value_binding list * expression * Region_barrier.t
         (** let P1 = E1 and ... and Pn = EN in E       (flag = Nonrecursive)
             let rec P1 = E1 and ... and Pn = EN in E   (flag = Recursive)
          *)
@@ -309,7 +340,7 @@ and expression_desc =
       *)
   | Texp_apply of
       expression * (arg_label * apply_arg) list * apply_position *
-        Mode.Locality.l * Zero_alloc.assume option
+        Mode.Locality.l * Zero_alloc.assume option * Region_barrier.t
         (** E0 ~l1:E1 ... ~ln:En
 
             The expression can be Omitted if the expression is abstracted over
@@ -327,14 +358,15 @@ and expression_desc =
 
             The [Zero_alloc.assume option] records the optional [@zero_alloc
             assume] attribute that may appear on applications. *)
-  | Texp_match of expression * Jkind.sort * computation case list * partial
+  | Texp_match of
+      expression * Jkind.sort * computation case list * partial * Region_barrier.t
         (** match E0 with
             | P1 -> E1
             | P2 | exception P3 -> E2
             | exception P4 -> E3
 
             [Texp_match (E0, sort_of_E0, [(P1, E1); (P2 | exception P3, E2);
-                              (exception P4, E3)], _)]
+                              (exception P4, E3)], _, _)]
          *)
   | Texp_try of expression * value case list
         (** try E with P1 -> E1 | ... | PN -> EN *)
@@ -453,6 +485,7 @@ and expression_desc =
     (* A source position value which has been automatically inferred, either
        as a result of [%call_pos] occuring in an expression, or omission of a
        Position argument in function application *)
+  | Texp_borrow of expression
 
 and function_curry =
   | More_args of { partial_mode : Mode.Alloc.l }

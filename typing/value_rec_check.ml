@@ -147,7 +147,7 @@ let classify_expression : Typedtree.expression -> sd =
   let rec classify_expression env e : sd =
     match e.exp_desc with
     (* binding and variable cases *)
-    | Texp_let (rec_flag, vb, e) ->
+    | Texp_let (rec_flag, vb, e, _) ->
         let env = classify_value_bindings rec_flag env vb in
         classify_expression env e
     | Texp_letmodule (Some mid, _, _, mexp, e) ->
@@ -208,10 +208,10 @@ let classify_expression : Typedtree.expression -> sd =
         (* CR vlaviron: Dynamic would probably be a better choice *)
         Static
 
-    | Texp_apply ({exp_desc = Texp_ident (_, _, vd, Id_prim _, _)}, _, _, _, _)
+    | Texp_apply ({exp_desc = Texp_ident (_, _, vd, Id_prim _, _)}, _, _, _, _, _)
       when is_ref vd ->
         Static
-    | Texp_apply (_, args, _, _, _)
+    | Texp_apply (_, args, _, _, _, _)
       when List.exists is_abstracted_arg args ->
         Static
     | Texp_apply _ ->
@@ -253,8 +253,10 @@ let classify_expression : Typedtree.expression -> sd =
     | Texp_assert _
     | Texp_try _
     | Texp_override _
-    | Texp_letop _ ->
+    | Texp_letop _
+    | Texp_borrow _ ->
         Dynamic
+
   and classify_value_bindings rec_flag env bindings =
     (* We use a non-recursive classification, classifying each
         binding with respect to the old environment
@@ -617,7 +619,7 @@ let rec expression : Typedtree.expression -> term_judg =
   fun exp -> match exp.exp_desc with
     | Texp_ident (pth, _, _, _, _) ->
       path pth
-    | Texp_let (rec_flag, bindings, body) ->
+    | Texp_let (rec_flag, bindings, body, _) ->
       (*
          G  |- <bindings> : m -| G'
          G' |- body : m
@@ -627,7 +629,7 @@ let rec expression : Typedtree.expression -> term_judg =
       value_bindings rec_flag bindings >> expression body
     | Texp_letmodule (x, _, _, mexp, e) ->
       module_binding (x, mexp) >> expression e
-    | Texp_match (e, _, cases, _) ->
+    | Texp_match (e, _, cases, _, _) ->
       (*
          (Gi; mi |- pi -> ei : m)^i
          G |- e : sum(mi)^i
@@ -665,7 +667,7 @@ let rec expression : Typedtree.expression -> term_judg =
         join [path self_path << Dereference; path pth]
     | Texp_apply
         ({exp_desc = Texp_ident (_, _, vd, Id_prim _, _)}, [_, Arg (arg, _)], _,
-         _, _)
+         _, _, _)
       when is_ref vd ->
       (*
         G |- e: m[Guard]
@@ -673,7 +675,7 @@ let rec expression : Typedtree.expression -> term_judg =
         G |- ref e: m
       *)
       expression arg << Guard
-    | Texp_apply (e, args, _, _, _)  ->
+    | Texp_apply (e, args, _, _, _, _)  ->
         (* [args] may contain omitted arguments, corresponding to labels in
            the function's type that were not passed in the actual application.
            The arguments before the first omitted argument are passed to the
@@ -988,6 +990,7 @@ let rec expression : Typedtree.expression -> term_judg =
     | Texp_probe_is_enabled _ -> empty
     | Texp_exclave e -> expression e
     | Texp_src_pos -> empty
+    | Texp_borrow e -> expression e
 
 (* Function bodies.
     G |-{body} b : m

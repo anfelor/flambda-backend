@@ -392,7 +392,7 @@ type expected_mode =
 
         - Specifically for [Pexp_tuple [e0; e1; ..]], a finer-grained check is
           performed instead: we check [e0 <= x0] and [e1 <= x1] and so on; we
-          also check [regional_to_local(join(e0, e1, ..)) <= mode]. *)
+        also check [regional_to_local(join(e0, e1, ..)) <= mode]. *)
   }
 
 type position_and_mode = {
@@ -3533,11 +3533,11 @@ let force_delayed_checks () =
 
 let rec final_subexpression exp =
   match exp.exp_desc with
-    Texp_let (_, _, e)
+    Texp_let (_, _, e, _)
   | Texp_sequence (_, _, e)
   | Texp_try (e, _)
   | Texp_ifthenelse (_, e, _)
-  | Texp_match (_, _, {c_rhs=e} :: _, _)
+  | Texp_match (_, _, {c_rhs=e} :: _, _, _)
   | Texp_letmodule (_, _, _, _, e)
   | Texp_letexception (_, e)
   | Texp_open (_, e)
@@ -3940,12 +3940,12 @@ let rec is_nonexpansive exp =
   | Texp_probe_is_enabled _
   | Texp_src_pos
   | Texp_array (_, _, [], _) -> true
-  | Texp_let(_rec_flag, pat_exp_list, body) ->
+  | Texp_let(_rec_flag, pat_exp_list, body, _) ->
       List.for_all (fun vb -> is_nonexpansive vb.vb_expr) pat_exp_list &&
       is_nonexpansive body
-  | Texp_apply(e, (_,Omitted _)::el, _, _, _) ->
+  | Texp_apply(e, (_,Omitted _)::el, _, _, _, _) ->
       is_nonexpansive e && List.for_all is_nonexpansive_arg (List.map snd el)
-  | Texp_match(e, _, cases, _) ->
+  | Texp_match(e, _, cases, _, _) ->
      (* Not sure this is necessary, if [e] is nonexpansive then we shouldn't
          care if there are exception patterns. But the previous version enforced
          that there be none, so... *)
@@ -4018,7 +4018,7 @@ let rec is_nonexpansive exp =
              Val_prim {Primitive.prim_name =
                          ("%raise" | "%reraise" | "%raise_notrace")}},
              Id_prim _, _) },
-      [Nolabel, Arg (e, _)], _, _, _) ->
+      [Nolabel, Arg (e, _)], _, _, _, _) ->
      is_nonexpansive e
   | Texp_array (_, _, _ :: _, _)
   | Texp_apply _
@@ -4037,6 +4037,7 @@ let rec is_nonexpansive exp =
   | Texp_extension_constructor _ ->
     false
   | Texp_exclave e -> is_nonexpansive e
+  | Texp_borrow e -> is_nonexpansive e
 
 and is_nonexpansive_mod mexp =
   match mexp.mod_desc with
@@ -4405,7 +4406,7 @@ let check_statement exp =
   | _ ->
       let rec loop {exp_loc; exp_desc; exp_extra; _} =
         match exp_desc with
-        | Texp_let (_, _, e)
+        | Texp_let (_, _, e, _)
         | Texp_sequence (_, _, e)
         | Texp_letexception (_, e)
         | Texp_letmodule (_, _, _, _, e) ->
@@ -4465,15 +4466,15 @@ let check_partial_application ~statement exp =
             | Texp_lazy _ | Texp_object _ | Texp_pack _ | Texp_unreachable
             | Texp_extension_constructor _ | Texp_ifthenelse (_, _, None)
             | Texp_probe _ | Texp_probe_is_enabled _ | Texp_src_pos
-            | Texp_function _ ->
+            | Texp_function _ | Texp_borrow _ ->
                 check_statement ()
-            | Texp_match (_, _, cases, _) ->
+            | Texp_match (_, _, cases, _, _) ->
                 List.iter (fun {c_rhs; _} -> check c_rhs) cases
             | Texp_try (e, cases) ->
                 check e; List.iter (fun {c_rhs; _} -> check c_rhs) cases
             | Texp_ifthenelse (_, e1, Some e2) ->
                 check e1; check e2
-            | Texp_let (_, _, e) | Texp_sequence (_, _, e) | Texp_open (_, e)
+            | Texp_let (_, _, e, _) | Texp_sequence (_, _, e) | Texp_open (_, e)
             | Texp_letexception (_, e) | Texp_letmodule (_, _, _, _, e)
             | Texp_exclave e ->
                 check e
@@ -5236,6 +5237,11 @@ and type_expect_
          pexp_desc = Pexp_match (sval, [Ast_helper.Exp.case spat sbody])}
         ty_expected_explained
   | Pexp_let(rec_flag, spat_sexp_list, sbody) ->
+      let expected_mode, region_barrier =
+        let regionality = Regionality.newvar () in
+        mode_coerce (Value.max_with (Comonadic Areality) regionality)
+          expected_mode, Region_barrier.create regionality
+      in
       let existential_context =
         if rec_flag = Recursive then In_rec
         else if List.compare_length_with spat_sexp_list 1 > 0 then In_group
@@ -5304,7 +5310,7 @@ and type_expect_
           unify_exp new_env body (newvar (Jkind.Builtin.any ~why:Dummy_jkind)))
       in
       re {
-        exp_desc = Texp_let(rec_flag, pat_exp_list, body);
+        exp_desc = Texp_let(rec_flag, pat_exp_list, body, region_barrier);
         exp_loc = loc; exp_extra = [];
         exp_type = body.exp_type;
         exp_attributes = sexp.pexp_attributes;
@@ -5356,6 +5362,11 @@ and type_expect_
       end
   | Pexp_apply(sfunct, sargs) ->
       assert (sargs <> []);
+      let expected_mode, region_barrier =
+        let regionality = Regionality.newvar () in
+        mode_coerce (Value.max_with (Comonadic Areality) regionality)
+          expected_mode, Region_barrier.create regionality
+      in
       let pm = position_and_mode env expected_mode sexp in
       let funct_mode, funct_expected_mode =
         match pm.apply_position with
@@ -5437,15 +5448,19 @@ and type_expect_
           ~default_arity:(List.length args) sfunct.pexp_attributes
         |> Builtin_attributes.zero_alloc_attribute_only_assume_allowed
       in
-
       rue {
         exp_desc = Texp_apply(funct, args, pm.apply_position, ap_mode,
-                              zero_alloc);
+                              zero_alloc, region_barrier);
         exp_loc = loc; exp_extra = [];
         exp_type = ty_res;
         exp_attributes = sexp.pexp_attributes;
         exp_env = env }
   | Pexp_match(sarg, caselist) ->
+      let expected_mode, region_barrier =
+        let regionality = Regionality.newvar () in
+        mode_coerce (Value.max_with (Comonadic Areality) regionality)
+          expected_mode, Region_barrier.create regionality
+      in
       let arg_pat_mode, arg_expected_mode =
         match cases_tuple_arity caselist with
         | Not_local_tuple | Maybe_local_tuple ->
@@ -5475,7 +5490,7 @@ and type_expect_
           cases
       then check_partial_application ~statement:false arg;
       re {
-        exp_desc = Texp_match(arg, sort, cases, partial);
+        exp_desc = Texp_match(arg, sort, cases, partial, region_barrier);
         exp_loc = loc; exp_extra = [];
         exp_type = instance ty_expected;
         exp_attributes = sexp.pexp_attributes;
@@ -6500,7 +6515,20 @@ and type_expect_
         ~attributes:sexp.pexp_attributes
         comp
   | Pexp_borrow e ->
-      type_expect env expected_mode e ty_expected_explained
+      let expected_mode' =
+        mode_morph (Value.join_with (Comonadic Areality) Regionality.Const.Local)
+          expected_mode
+      in
+      let exp = type_expect env expected_mode' e ty_expected_explained in
+      (* CR uniqueness: If the borrow happens in a function, we need to
+         make the lock of that function local. Currently borrowing is unsound
+         since we do not do that. *)
+      rue {
+        exp_desc = Texp_borrow exp;
+        exp_loc = loc; exp_extra = [];
+        exp_type = exp.exp_type;
+        exp_attributes = sexp.pexp_attributes;
+        exp_env = env }
 
 and expression_constraint pexp =
   { type_without_constraint = (fun env expected_mode ->
@@ -7541,6 +7569,11 @@ and type_argument ?explanation ?recarg env (mode : expected_mode) sarg
       let ret_sort = type_sort ~why:Function_result ty_res in
       let func texp =
         let ret_mode = alloc_as_value mret in
+        let region_barrier =
+          let regionality = Regionality.newvar () in
+          (* CR uniqueness: do we need to constrain this? *)
+          Region_barrier.create regionality
+        in
         let e =
           {texp with exp_type = ty_res; exp_desc =
            Texp_apply
@@ -7550,7 +7583,8 @@ and type_argument ?explanation ?recarg env (mode : expected_mode) sarg
               |> Value.proj (Comonadic Areality)
               |> regional_to_global
               |> Locality.disallow_right,
-              None)}
+              None,
+              region_barrier)}
         in
         let e = {texp with exp_type = ty_res; exp_desc = Texp_exclave e} in
         let cases = [ case eta_pat e ] in
@@ -7570,7 +7604,8 @@ and type_argument ?explanation ?recarg env (mode : expected_mode) sarg
               ret_mode = Alloc.disallow_right mret;
               ret_sort;
               alloc_mode;
-              zero_alloc = Zero_alloc.default
+              zero_alloc = Zero_alloc.default;
+              (* CR borrowing: we need to ensure that this barrier is never activated *)
             }
         }
       in
@@ -7588,7 +7623,8 @@ and type_argument ?explanation ?recarg env (mode : expected_mode) sarg
                            vb_attributes=[]; vb_loc=Location.none;
                            vb_rec_kind = Dynamic;
                           }],
-                         func let_var) }
+                         func let_var,
+                         Region_barrier.create (Regionality.newvar ())) }
       end
       end
   | None ->

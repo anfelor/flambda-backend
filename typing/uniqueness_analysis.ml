@@ -110,13 +110,38 @@ end
 module Maybe_aliased : sig
   type t
 
+  (** The closest region surrounding a borrow. *)
+  type region =
+    { region_occ : Occurrence.t;
+      region_barrier : Region_barrier.t
+    }
+
+  type borrowing_reason =
+    | No_region_yet
+    | Captured_in_function
+    | Captured_in_lazy
+    | Captured_in_letop
+
   type access =
     | Read of Unique_barrier.t
+        (** A read from a memory location, eg. 'r.x'. This requires a [Unique_barrier.t]
+            to ensure that the middle end does not push down the read beyond further
+            unique uses. *)
     | Write
+        (** A write to a memory location, eg. 'r.x <- v'. Writes are never pushed down. *)
+    | Borrowed of region
+        (** A borrow of a value with its region. If the value is used again later, the
+            region has to be regional to avoid the current value leaking out of it.
+            Furthermore, we have to insert a barrier to ensure that _any_ reads in the
+            region can not be pushed out of the region in the middle end. *)
+    | Borrowing of borrowing_reason
+        (** A borrow of the value where we have not yet found the surrounding region.
+            We always pick the closest let-binding, match-statement or function call as
+            the surrounding region. However, if the value is captured in a function, we
+            may discard such a region and go back to [Borrowing]. *)
 
-  val string_of_access : access -> string
-
-  (** The type representing a usage that could be either aliased or borrowed *)
+  (** The occurrence is only for future error messages *)
+  val singleton : Occurrence.t -> access -> t
 
   (** Extract an arbitrary occurrence from the usage *)
   val extract_occurrence : t -> Occurrence.t
@@ -124,35 +149,68 @@ module Maybe_aliased : sig
   (** extract an arbitrary access from this usage *)
   val extract_access : t -> access
 
-  (** Add a barrier. The uniqueness mode represents the usage immediately
-      following the current usage. If that mode is Unique, the current usage
-       must be Borrowed (hence no code motion); if that mode is not restricted
-       to Unique, this usage can be Borrowed or Aliased (prefered). Can be called
-       multiple times for multiple barriers (for different branches). *)
-  val add_barrier : t -> Uniqueness.r -> unit
+  val string_of_access : access -> string
 
   val meet : t -> t -> t
 
-  val singleton : Occurrence.t -> access -> t
+  type cannot_contain =
+    | No_region_found of
+        { occ : Occurrence.t;
+          reason : borrowing_reason
+        }
+        (** We tried to borrow a value and use it again before a region was found. *)
+    | Region_is_local of
+        { occ : Occurrence.t;  (** The occurrence of the borrow *)
+          region_occ : Occurrence.t;  (** The occurrence of the region *)
+          region_error : Mode.Regionality.error
+        }
+
+  (** Add a barrier. The uniqueness mode represents the usage immediately
+      following the current usage.
+
+      If that mode is Unique, every read must be Borrowed (hence no code motion);
+      if that mode is not restricted to Unique, a read can also be Aliased. We prefer
+      Aliased reads, since those permit code motion.
+
+      For a borrow, we always enable the region independent of whether the access
+      is Unique or Aliased. *)
+  val add_barrier : t -> Uniqueness.r -> (unit, cannot_contain) result
+
+  (** When we capture the value in a closure, we need to forget all surrounding regions.
+      We thus set the access to be [Borrowing]. Note that this also applies when our
+      initial access for a read or a write, since this read or write can now be delayed
+      until the closure is called. *)
+  val capture_in_closure : borrowing_reason -> t -> t
+
+  (** We have found a region which we can use to turn [Borrowing] accesses
+      into [Borrowed] ones. *)
+  val add_region : region -> t -> t
 end = struct
+  type region =
+    { region_occ : Occurrence.t;
+      region_barrier : Region_barrier.t
+    }
+
+  type borrowing_reason =
+    | No_region_yet
+    | Captured_in_function
+    | Captured_in_lazy
+    | Captured_in_letop
+
   type access =
     | Read of Unique_barrier.t
     | Write
-
-  let string_of_access = function
-    | Read _ -> "read from"
-    | Write -> "written to"
+    | Borrowed of region
+    | Borrowing of borrowing_reason
 
   (** list of occurences together with modes to be forced as borrowed in the
-  future if needed. It is a list because of multiple control flows. For
-  example, if a value is used borrowed in one branch but aliased in another,
-  then the overall usage is aliased. Therefore, the mode this list represents
-  is the meet of all modes in the list. (recall that borrowed > aliased).
-  Therefore, if this virtual mode needs to be forced borrowed, the whole list
-  needs to be forced borrowed. *)
+      future if needed. It is a list because of multiple control flows. For
+      example, if a value is used borrowed in one branch but aliased in another,
+      then the overall usage is aliased. Therefore, the mode this list represents
+      is the meet of all modes in the list. (recall that borrowed > aliased).
+      Therefore, if this virtual mode needs to be forced borrowed, the whole list
+      needs to be forced borrowed. *)
   type t = (Occurrence.t * access) list
-
-  let meet l0 l1 = l0 @ l1
 
   let singleton occ access = [occ, access]
 
@@ -162,26 +220,70 @@ end = struct
     | [] -> assert false
     | (_, access) :: _ -> access
 
+  let string_of_access = function
+    | Read _ -> "read from"
+    | Write -> "written to"
+    | Borrowed _ -> "borrowed"
+    | Borrowing reason -> (
+      match reason with
+      | No_region_yet -> "borrowed without a region"
+      | Captured_in_function -> "captured in a function"
+      | Captured_in_lazy -> "captured in a lazy"
+      | Captured_in_letop -> "captured in a let-op")
+
+  let meet l0 l1 = l0 @ l1
+
+  type cannot_contain =
+    | No_region_found of
+        { occ : Occurrence.t;
+          reason : borrowing_reason
+        }
+    | Region_is_local of
+        { occ : Occurrence.t;
+          region_occ : Occurrence.t;
+          region_error : Mode.Regionality.error
+        }
+
   let add_barrier t uniq =
-    List.iter
-      (fun (_, access) ->
+    iter_error
+      (fun (occ, access) ->
         match access with
-        | Read barrier -> Unique_barrier.add_upper_bound uniq barrier
-        | _ -> ())
+        | Read barrier ->
+          Unique_barrier.add_upper_bound uniq barrier;
+          Ok ()
+        | Write -> Ok ()
+        | Borrowing reason -> Error (No_region_found { occ; reason })
+        | Borrowed { region_occ; region_barrier } -> (
+          match Region_barrier.enable region_barrier with
+          | Ok () -> Ok ()
+          | Error region_error ->
+            Error (Region_is_local { occ; region_occ; region_error })))
+      t
+
+  let capture_in_closure reason t =
+    List.map (fun (occ, _) -> occ, Borrowing reason) t
+
+  let add_region region t =
+    List.map
+      (fun (occ, access) ->
+        occ, match access with Borrowing _ -> Borrowed region | m -> m)
       t
 end
+
+type boundary_reason =
+  | Paths_from_mod_class
+  | Free_var_of_mod_class
+  | Out_of_mod_class
 
 module Aliased : sig
   type t
 
   type reason =
-    | Forced  (** aliased because forced  *)
+    | Used_more_than_once  (** variable was forced to be aliased by multi-use *)
+    | At_boundary of boundary_reason  (** aliased because at boundary *)
     | Lazy  (** aliased because it is the argument of lazy forcing *)
-    | Lifted of Maybe_aliased.access
-        (** aliased because lifted from implicit borrowing, carries the original
-          access *)
 
-  (** The occurrence is only for future error messages. The share_reason must
+  (** The occurrence is only for future error messages. The [reason] must
   corresponds to the occurrence *)
   val singleton : Occurrence.t -> reason -> t
 
@@ -190,9 +292,9 @@ module Aliased : sig
   val reason : t -> reason
 end = struct
   type reason =
-    | Forced
+    | Used_more_than_once
+    | At_boundary of boundary_reason
     | Lazy
-    | Lifted of Maybe_aliased.access
 
   type t = Occurrence.t * reason
 
@@ -206,10 +308,6 @@ end
 module Usage : sig
   type t =
     | Unused  (** empty usage *)
-    | Borrowed of Occurrence.t
-        (** A borrowed usage with an arbitrary occurrence. The occurrence is
-        only for future error messages. Currently not used, because we don't
-        have explicit borrowing *)
     | Maybe_aliased of Maybe_aliased.t
         (** A usage that could be either borrowed or aliased. *)
     | Aliased of Aliased.t  (** A aliased usage *)
@@ -227,11 +325,14 @@ module Usage : sig
     | First
     | Second
 
+  type error_kind =
+    | Cannot_contain of Maybe_aliased.cannot_contain
+    | Cannot_force of Maybe_unique.cannot_force
+
   type error =
-    { cannot_force : Maybe_unique.cannot_force;
-      there : t;  (** The other usage  *)
+    { error_kind : error_kind;
+      there : t;
       first_or_second : first_or_second
-          (** Is it the first or second usage that's failing force? *)
     }
 
   exception Error of error
@@ -245,10 +346,12 @@ module Usage : sig
   (** Parallel composition *)
   val par : t -> t -> t
 end = struct
-  (* We have Unused (top) > Borrowed > Aliased > Unique > Error (bot).
+  (* We have Unused (top) > Borrowed > Borrowing > Aliased > Unique > Error (bot).
 
      - Unused means unused
      - Borrowed means read-only access confined to a region
+     - Borrowing means the value is being borrowed in the current region. See
+       [Consideration of Borrowing].
      - Aliased means read-only access that may escape a region. For example,
      storing the value in a cell that can be accessed later.
      - Unique means accessing the value as if it's the only pointer. Example
@@ -299,7 +402,6 @@ end = struct
 
   type t =
     | Unused
-    | Borrowed of Occurrence.t
     | Maybe_aliased of Maybe_aliased.t
     | Aliased of Aliased.t
     | Maybe_unique of Maybe_unique.t
@@ -311,7 +413,6 @@ end = struct
 
   let extract_occurrence = function
     | Unused -> None
-    | Borrowed occ -> Some occ
     | Maybe_aliased t -> Some (Maybe_aliased.extract_occurrence t)
     | Aliased t -> Some (Aliased.extract_occurrence t)
     | Maybe_unique t -> Some (Maybe_unique.extract_occurrence t)
@@ -319,7 +420,6 @@ end = struct
   let choose m0 m1 =
     match m0, m1 with
     | Unused, m | m, Unused -> m
-    | Borrowed _, t | t, Borrowed _ -> t
     | Maybe_aliased l0, Maybe_aliased l1 ->
       Maybe_aliased (Maybe_aliased.meet l0 l1)
     | Maybe_aliased _, t | t, Maybe_aliased _ ->
@@ -333,8 +433,12 @@ end = struct
     | First
     | Second
 
+  type error_kind =
+    | Cannot_contain of Maybe_aliased.cannot_contain
+    | Cannot_force of Maybe_unique.cannot_force
+
   type error =
-    { cannot_force : Maybe_unique.cannot_force;
+    { error_kind : error_kind;
       there : t;
       first_or_second : first_or_second
     }
@@ -345,18 +449,24 @@ end = struct
     match Maybe_unique.mark_multi_use t with
     | Ok () -> ()
     | Error cannot_force ->
-      raise (Error { cannot_force; there; first_or_second })
+      raise
+        (Error
+           { error_kind = Cannot_force cannot_force; there; first_or_second })
+
+  let add_barrier t there uniq =
+    match Maybe_aliased.add_barrier t uniq with
+    | Ok () -> ()
+    | Error cannot_contain ->
+      raise
+        (Error
+           { error_kind = Cannot_contain cannot_contain;
+             there;
+             first_or_second = First
+           })
 
   let par m0 m1 =
     match m0, m1 with
     | Unused, m | m, Unused -> m
-    | Borrowed occ, Borrowed _ -> Borrowed occ
-    | Borrowed _, Maybe_aliased t | Maybe_aliased t, Borrowed _ ->
-      Maybe_aliased t
-    | Borrowed _, Aliased t | Aliased t, Borrowed _ -> Aliased t
-    | Borrowed occ, Maybe_unique t | Maybe_unique t, Borrowed occ ->
-      force_aliased_multiuse t (Borrowed occ) First;
-      aliased (Maybe_unique.extract_occurrence t) Aliased.Forced
     | Maybe_aliased t0, Maybe_aliased t1 ->
       Maybe_aliased (Maybe_aliased.meet t0 t1)
     | Maybe_aliased _, Aliased occ | Aliased occ, Maybe_aliased _ ->
@@ -368,7 +478,7 @@ end = struct
       force_aliased_multiuse t1 (Maybe_aliased t0) First;
       (* The barrier stays empty; if there is any unique after this,
          the analysis will error *)
-      aliased (Maybe_unique.extract_occurrence t1) Aliased.Forced
+      aliased (Maybe_unique.extract_occurrence t1) Aliased.Used_more_than_once
     | Aliased t0, Aliased _ -> Aliased t0
     | Aliased t0, Maybe_unique t1 ->
       force_aliased_multiuse t1 (Aliased t0) Second;
@@ -379,13 +489,11 @@ end = struct
     | Maybe_unique t0, Maybe_unique t1 ->
       force_aliased_multiuse t0 m1 First;
       force_aliased_multiuse t1 m0 Second;
-      aliased (Maybe_unique.extract_occurrence t0) Aliased.Forced
+      aliased (Maybe_unique.extract_occurrence t0) Aliased.Used_more_than_once
 
   let seq m0 m1 =
     match m0, m1 with
     | Unused, m | m, Unused -> m
-    | Borrowed _, t -> t
-    | Maybe_aliased _, Borrowed _ -> m0
     | Maybe_aliased l0, Maybe_aliased l1 ->
       Maybe_aliased (Maybe_aliased.meet l0 l1)
     | Maybe_aliased _, Aliased _ -> m1
@@ -414,12 +522,8 @@ end = struct
           checking of the whole file, m1 will correctly tells whether it needs
           to be Unique, and by extension whether m0 can be Aliased. *)
       let uniq = Maybe_unique.uniqueness l1 in
-      Maybe_aliased.add_barrier l0 uniq;
+      add_barrier l0 m1 uniq;
       m1
-    | Aliased _, Borrowed _ -> m0
-    | Maybe_unique l, Borrowed occ ->
-      force_aliased_multiuse l m1 First;
-      aliased occ Aliased.Forced
     | Aliased _, Maybe_aliased _ ->
       (* The barrier stays empty; if there is any unique after this,
          the analysis will error *)
@@ -438,7 +542,7 @@ end = struct
       *)
       let occ = Maybe_aliased.extract_occurrence l1 in
       force_aliased_multiuse l0 m1 First;
-      aliased occ Aliased.Forced
+      aliased occ Aliased.Used_more_than_once
     | Aliased _, Aliased _ -> m0
     | Maybe_unique l, Aliased _ ->
       force_aliased_multiuse l m1 First;
@@ -449,7 +553,7 @@ end = struct
     | Maybe_unique l0, Maybe_unique l1 ->
       force_aliased_multiuse l0 m1 First;
       force_aliased_multiuse l1 m0 Second;
-      aliased (Maybe_unique.extract_occurrence l0) Aliased.Forced
+      aliased (Maybe_unique.extract_occurrence l0) Aliased.Used_more_than_once
 end
 
 module Projection : sig
@@ -501,11 +605,6 @@ end = struct
   include T
   module Map = Map.Make (T)
 end
-
-type boundary_reason =
-  | Paths_from_mod_class (* currently will never trigger *)
-  | Free_var_of_mod_class (* currently will never trigger *)
-  | Out_of_mod_class
 
 (** The relation between two nodes in a usage tree. Obviously the list must be
     non-empty *)
@@ -913,7 +1012,7 @@ end = struct
     | Fresh -> UF.unused
     | Existing { paths; unique_use; occ } ->
       force_aliased_boundary unique_use occ ~reason;
-      let aliased = Usage.aliased occ Aliased.Forced in
+      let aliased = Usage.aliased occ (Aliased.At_boundary reason) in
       Paths.mark aliased paths
 end
 
@@ -1226,17 +1325,21 @@ let mark_aliased_open_variables ienv f _loc =
   in
   UF.pars ufs
 
-let lift_implicit_borrowing uf =
+let lift_borrowing reason uf =
   UF.map
     (function
       | Maybe_aliased t ->
-        (* implicit borrowing lifted. *)
-        let occ = Maybe_aliased.extract_occurrence t in
-        let access = Maybe_aliased.extract_access t in
-        Usage.aliased occ (Aliased.Lifted access)
-      | m ->
-        (* other usage stays the same *)
-        m)
+        Maybe_aliased (Maybe_aliased.capture_in_closure reason t)
+      | m -> m)
+    uf
+
+let add_region region_occ region_barrier uf =
+  UF.map
+    (function
+      | Maybe_aliased t ->
+        Maybe_aliased
+          (Maybe_aliased.add_region { region_occ; region_barrier } t)
+      | m -> m)
     uf
 
 (* There are two modes our algorithm will work at.
@@ -1257,11 +1360,14 @@ let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
     let value, uf = check_uniqueness_exp_as_value ienv exp in
     UF.seq uf (Value.mark_maybe_unique value)
   | Texp_constant _ -> UF.unused
-  | Texp_let (_, vbs, body) ->
+  | Texp_let (_, vbs, body, region_barrier) ->
     let ext, uf_vbs = check_uniqueness_value_bindings ienv vbs in
     let uf_body = check_uniqueness_exp (Ienv.extend ienv ext) body in
+    let uf_body =
+      add_region (Occurrence.mk exp.exp_loc) region_barrier uf_body
+    in
     UF.seq uf_vbs uf_body
-  | Texp_function { params; body; _ } ->
+  | Texp_function { params; body } ->
     let ienv, uf_params =
       List.fold_left_map
         (fun ienv param ->
@@ -1294,8 +1400,8 @@ let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
     let uf = UF.seq (UF.seqs uf_params) uf_body in
     (* we are constructing a closure here, and therefore any implicit
        borrowing of free variables in the closure is in fact using aliased. *)
-    lift_implicit_borrowing uf
-  | Texp_apply (fn, args, _, _, _) ->
+    lift_borrowing Maybe_aliased.Captured_in_function uf
+  | Texp_apply (fn, args, _, _, _, region_barrier) ->
     let uf_fn = check_uniqueness_exp ienv fn in
     let uf_args =
       List.map
@@ -1305,10 +1411,14 @@ let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
           | Omitted _ -> UF.unused)
         args
     in
-    UF.pars (uf_fn :: uf_args)
-  | Texp_match (arg, _, cases, _) ->
+    let uf = UF.pars (uf_fn :: uf_args) in
+    add_region (Occurrence.mk exp.exp_loc) region_barrier uf
+  | Texp_match (arg, _, cases, _, region_barrier) ->
     let value, uf_arg = check_uniqueness_exp_for_match ienv arg in
     let uf_cases = check_uniqueness_comp_cases ienv value cases in
+    let uf_cases =
+      add_region (Occurrence.mk exp.exp_loc) region_barrier uf_cases
+    in
     UF.seq uf_arg uf_cases
   | Texp_try (body, cases) ->
     let uf_body = check_uniqueness_exp ienv body in
@@ -1410,7 +1520,7 @@ let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
   | Texp_assert (e, _) -> check_uniqueness_exp ienv e
   | Texp_lazy e ->
     let uf = check_uniqueness_exp ienv e in
-    lift_implicit_borrowing uf
+    lift_borrowing Maybe_aliased.Captured_in_lazy uf
   | Texp_object (cls_struc, _) ->
     (* the object (methods, values) will be type-checked by Typeclass,
        which invokes uniqueness check.*)
@@ -1431,7 +1541,7 @@ let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
     let uf_body =
       check_uniqueness_cases ienv (Match_single (Paths.fresh ())) [body]
     in
-    let uf_body = lift_implicit_borrowing uf_body in
+    let uf_body = lift_borrowing Captured_in_letop uf_body in
     UF.pars (uf_let :: (uf_ands @ [uf_body]))
   | Texp_unreachable -> UF.unused
   | Texp_extension_constructor _ -> UF.unused
@@ -1446,6 +1556,7 @@ let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
   | Texp_probe_is_enabled _ -> UF.unused
   | Texp_exclave e -> check_uniqueness_exp ienv e
   | Texp_src_pos -> UF.unused
+  | Texp_borrow e -> check_uniqueness_exp ienv e
 
 (**
 Corresponds to the first mode.
@@ -1605,7 +1716,7 @@ let check_uniqueness_value_bindings vbs =
   ()
 
 let report_multi_use inner first_is_of_second =
-  let { Usage.cannot_force = { occ; axis }; there; first_or_second } = inner in
+  let { Usage.error_kind; there; first_or_second } = inner in
   let here_usage = "used" in
   let there_usage =
     match there with
@@ -1613,18 +1724,10 @@ let report_multi_use inner first_is_of_second =
       Maybe_aliased.string_of_access (Maybe_aliased.extract_access t)
     | Usage.Aliased t -> (
       match Aliased.reason t with
-      | Forced | Lazy -> "used"
-      | Lifted access ->
-        Maybe_aliased.string_of_access access
-        ^ " in a closure that might be called later")
+      | Lazy -> "used in a lazy"
+      | Used_more_than_once -> "used more than once"
+      | At_boundary _ -> "used in a module or class")
     | _ -> "used"
-  in
-  let first, first_usage, second, second_usage =
-    match first_or_second with
-    | Usage.First ->
-      occ, here_usage, Option.get (Usage.extract_occurrence there), there_usage
-    | Usage.Second ->
-      Option.get (Usage.extract_occurrence there), there_usage, occ, here_usage
   in
   let first_is_of_second =
     match first_is_of_second with
@@ -1637,29 +1740,69 @@ let report_multi_use inner first_is_of_second =
   in
   (* English is sadly not very composible, we write out all four cases
      manually *)
-  let error =
-    match first_or_second, axis with
-    | First, Uniqueness ->
-      Format.dprintf
-        "This value is %s here,@ but %s has already been %s as unique:"
-        second_usage first_is_of_second first_usage
-    | First, Linearity ->
-      Format.dprintf
-        "This value is %s here,@ but %s is defined as once and has already \
-         been %s:"
-        second_usage first_is_of_second first_usage
-    | Second, Uniqueness ->
-      Format.dprintf
-        "This value is %s here as unique,@ but %s has already been %s:"
-        second_usage first_is_of_second first_usage
-    | Second, Linearity ->
-      Format.dprintf
-        "This value is defined as once and %s here,@ but %s has already been \
-         %s:"
-        second_usage first_is_of_second first_usage
-  in
-  let sub = [Location.msg ~loc:first.loc ""] in
-  Location.errorf ~loc:second.loc ~sub "@[%t@]" error
+  match error_kind with
+  | Usage.Cannot_force { occ; axis } ->
+    let first, first_usage, second, second_usage =
+      match first_or_second with
+      | Usage.First ->
+        ( occ,
+          here_usage,
+          Option.get (Usage.extract_occurrence there),
+          there_usage )
+      | Usage.Second ->
+        ( Option.get (Usage.extract_occurrence there),
+          there_usage,
+          occ,
+          here_usage )
+    in
+    let error =
+      match first_or_second, axis with
+      | First, Uniqueness ->
+        Format.dprintf
+          "This value is %s here,@ but %s has already been %s as unique:"
+          second_usage first_is_of_second first_usage
+      | First, Linearity ->
+        Format.dprintf
+          "This value is %s here,@ but %s is defined as once and has already \
+           been %s:"
+          second_usage first_is_of_second first_usage
+      | Second, Uniqueness ->
+        Format.dprintf
+          "This value is %s here as unique,@ but %s has already been %s:"
+          second_usage first_is_of_second first_usage
+      | Second, Linearity ->
+        Format.dprintf
+          "This value is defined as once and %s here,@ but %s has already been \
+           %s:"
+          second_usage first_is_of_second first_usage
+    in
+    let sub = [Location.msg ~loc:first.loc ""] in
+    Location.errorf ~loc:second.loc ~sub "@[%t@]" error
+  | Usage.Cannot_contain cannot_contain ->
+    let second, second_usage =
+      Option.get (Usage.extract_occurrence there), there_usage
+    in
+    let message, sub =
+      match cannot_contain with
+      | No_region_found { occ; reason } ->
+        let message =
+          match reason with
+          | No_region_yet -> "has no region"
+          | Captured_in_function -> "was captured in function"
+          | Captured_in_lazy -> "was captured by lazy"
+          | Captured_in_letop -> "was captured by letop"
+        in
+        message, [Location.msg ~loc:occ.loc ""]
+      | Region_is_local { occ; region_occ; region_error = _ } ->
+        ( "its region is local",
+          [ Location.msg ~loc:occ.loc "";
+            Location.msg ~loc:region_occ.loc "This region is local." ] )
+    in
+    let error =
+      Format.dprintf "This value is %s here,@ but %s was borrowed and %s"
+        second_usage first_is_of_second message
+    in
+    Location.errorf ~loc:second.loc ~sub "@[%t@]" error
 
 let report_boundary cannot_force reason =
   let { Maybe_unique.occ; axis } = cannot_force in

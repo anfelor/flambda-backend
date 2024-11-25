@@ -478,8 +478,8 @@ let foo () =
 Line 6, characters 12-13:
 6 |   unique_id r
                 ^
-Error: This value is used here as unique,
-       but it has already been read from in a closure that might be called later:
+Error: This value is used here,
+       but it was borrowed and was captured in function
 Line 4, characters 6-20:
 4 |     | {dim; x; y; z} -> ()
           ^^^^^^^^^^^^^^
@@ -505,8 +505,7 @@ let foo () =
 Line 4, characters 12-13:
 4 |   unique_id r
                 ^
-Error: This value is used here as unique,
-       but it has already been read from in a closure that might be called later:
+Error: This value is used here, but it was borrowed and was captured by lazy
 Line 3, characters 17-18:
 3 |   let _l = lazy (r.z) in
                      ^

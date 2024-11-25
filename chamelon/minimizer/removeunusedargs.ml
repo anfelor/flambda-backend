@@ -197,12 +197,12 @@ let locate_unused_var should_remove to_suppress =
         });
     expr =
       (fun mapper e ->
-        match e.exp_desc with
-        | Texp_let (rf, vb_l, e_in) ->
+        match view_texp e.exp_desc with
+        | Texp_let (rf, vb_l, e_in, id) ->
             {
               e with
               exp_desc =
-                Texp_let
+                mkTexp_let ~id
                   ( rf,
                     List.fold_left
                       (fun l vb ->

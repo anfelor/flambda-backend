@@ -96,11 +96,11 @@ let rec iterator ~scope rebuild_env =
         in
         Stypes.record
           (Stypes.An_ident (exp.exp_loc, full_name , annot))
-    | Texp_let (Recursive, bindings, _) ->
+    | Texp_let (Recursive, bindings, _, _) ->
         bind_bindings exp.exp_loc bindings
-    | Texp_let (Nonrecursive, bindings, body) ->
+    | Texp_let (Nonrecursive, bindings, body, _) ->
         bind_bindings body.exp_loc bindings
-    | Texp_match (_, _, f1, _) ->
+    | Texp_match (_, _, f1, _, _) ->
         bind_cases f1
     | Texp_try (_, f) ->
         bind_cases f

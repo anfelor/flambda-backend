@@ -1,6 +1,6 @@
 (* TEST
  flags += "-extension unique ";
- flags += "-extension borrowing";
+ flags += "-extension borrowing ";
  expect;
 *)
 
@@ -38,13 +38,12 @@ let borrow_requires_global_region_okay a = cast_local &a
 val borrow_requires_global_region_okay : 'a -> unit = <fun>
 |}]
 
-let borrow_requires_global_region_bad a = local_id &a
+let borrow_requires_global_region_bad a = stack_ (let x = &a in ())
 [%%expect{|
-Line 1, characters 42-53:
-1 | let borrow_requires_global_region_bad a = local_id &a
-                                              ^^^^^^^^^^^
-Error: This value escapes its region.
-  Hint: Cannot return a local value without an "exclave_" annotation.
+Line 1, characters 49-67:
+1 | let borrow_requires_global_region_bad a = stack_ (let x = &a in ())
+                                                     ^^^^^^^^^^^^^^^^^^
+Error: This expression is not an allocation site.
 |}]
 
 let borrow_may_be_unique_okay a = cast_unique &a
@@ -100,7 +99,14 @@ let borrowing_projection_bad a =
   let _l = &a.left in
   cast_unique &a.left
 [%%expect{|
-val borrowing_projection_bad : 'a pair @ unique -> unit = <fun>
+Line 3, characters 15-21:
+3 |   cast_unique &a.left
+                   ^^^^^^
+Error: This value is used here as unique, but it has already been used:
+Line 2, characters 12-18:
+2 |   let _l = &a.left in
+                ^^^^^^
+
 |}]
 
 let borrow_may_be_unique_okay a = cast_unique (&a.left, &a.right)

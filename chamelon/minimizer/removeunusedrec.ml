@@ -46,8 +46,8 @@ let minimize should_remove map cur_name =
           {
             e with
             exp_desc =
-              (match e.exp_desc with
-              | Texp_let (rf, vb_l, e_in) ->
+              (match view_texp e.exp_desc with
+              | Texp_let (rf, vb_l, e_in, id) ->
                   if
                     rf = Recursive
                     && (not
@@ -65,8 +65,10 @@ let minimize should_remove map cur_name =
                                | _ -> false)
                              vb_l))
                     && should_remove ()
-                  then Texp_let (Nonrecursive, vb_l, e_in)
-                  else Texp_let (rf, vb_l, Tast_mapper.default.expr mapper e_in)
+                  then mkTexp_let ~id (Nonrecursive, vb_l, e_in)
+                  else
+                    mkTexp_let ~id
+                      (rf, vb_l, Tast_mapper.default.expr mapper e_in)
               | _ -> (Tast_mapper.default.expr mapper e).exp_desc);
           });
     }

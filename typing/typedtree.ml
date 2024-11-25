@@ -96,6 +96,30 @@ end
 
 type unique_use = Mode.Uniqueness.r * Mode.Linearity.l
 
+module Region_barrier = struct
+  type resolved =
+    | Needs_region
+    | Not_a_region
+
+  type barrier =
+    { resolved : resolved;
+      return_mode : Mode.Regionality.lr;
+    }
+
+  type t = barrier ref
+
+  let create return_mode = ref { resolved = Not_a_region; return_mode }
+
+  let none () = create (Regionality.newvar ())
+
+  let enable t =
+    t := { !t with resolved = Needs_region };
+    Mode.Regionality.submode !t.return_mode Mode.Regionality.global
+
+  let resolve t =
+    !t.resolved
+end
+
 type alloc_mode = {
   mode : Mode.Alloc.r;
   locality_context : Env.locality_context option;
@@ -189,7 +213,7 @@ and expression_desc =
     Texp_ident of
       Path.t * Longident.t loc * Types.value_description * ident_kind * unique_use
   | Texp_constant of constant
-  | Texp_let of rec_flag * value_binding list * expression
+  | Texp_let of rec_flag * value_binding list * expression * Region_barrier.t
   | Texp_function of
       { params : function_param list;
         body : function_body;
@@ -200,8 +224,9 @@ and expression_desc =
       }
   | Texp_apply of
       expression * (arg_label * apply_arg) list * apply_position *
-        Mode.Locality.l * Zero_alloc.assume option
-  | Texp_match of expression * Jkind.sort * computation case list * partial
+        Mode.Locality.l * Zero_alloc.assume option * Region_barrier.t
+  | Texp_match of
+      expression * Jkind.sort * computation case list * partial * Region_barrier.t
   | Texp_try of expression * value case list
   | Texp_tuple of (string option * expression) list * alloc_mode
   | Texp_unboxed_tuple of (string option * expression * Jkind.sort) list
@@ -268,6 +293,7 @@ and expression_desc =
   | Texp_probe_is_enabled of { name:string }
   | Texp_exclave of expression
   | Texp_src_pos
+  | Texp_borrow of expression
 
 and ident_kind =
   | Id_value

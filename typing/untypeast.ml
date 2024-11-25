@@ -482,7 +482,7 @@ let expression sub exp =
     match exp.exp_desc with
       Texp_ident (_path, lid, _, _, _) -> Pexp_ident (map_loc sub lid)
     | Texp_constant cst -> Pexp_constant (constant cst)
-    | Texp_let (rec_flag, list, exp) ->
+    | Texp_let (rec_flag, list, exp, _) ->
         Pexp_let (rec_flag,
           List.map (sub.value_binding sub) list,
           sub.expr sub exp)
@@ -545,7 +545,7 @@ let expression sub exp =
             params
         in
         Pexp_function (params, constraint_, body)
-    | Texp_apply (exp, list, _, _, _) ->
+    | Texp_apply (exp, list, _, _, _, _) ->
         let list = List.map (fun (arg_label, arg) -> label arg_label, arg) list in
         Pexp_apply (sub.expr sub exp,
           List.fold_right (fun (label, arg) list ->
@@ -553,7 +553,7 @@ let expression sub exp =
               | Omitted _ -> list
               | Arg (exp, _) -> (label, sub.expr sub exp) :: list
           ) list [])
-    | Texp_match (exp, _, cases, _) ->
+    | Texp_match (exp, _, cases, _, _) ->
       Pexp_match (sub.expr sub exp, List.map (sub.case sub) cases)
     | Texp_try (exp, cases) ->
         Pexp_try (sub.expr sub exp, List.map (sub.case sub) cases)
@@ -696,6 +696,8 @@ let expression sub exp =
         pexp_attributes = [];
       }, [Nolabel, sub.expr sub exp])
     | Texp_src_pos -> Pexp_extension ({ txt = "src_pos"; loc }, PStr [])
+    | Texp_borrow exp ->
+        Pexp_borrow (sub.expr sub exp)
   in
   List.fold_right (exp_extra sub) exp.exp_extra
     (Exp.mk ~loc ~attrs desc)

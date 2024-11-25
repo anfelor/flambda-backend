@@ -221,8 +221,8 @@ let minimize should_remove map cur_name =
       expr =
         (fun mapper e ->
           Tast_mapper.default.expr mapper
-            (match e.exp_desc with
-            | Texp_let (rf, vb_l, e1) ->
+            (match view_texp e.exp_desc with
+            | Texp_let (rf, vb_l, e1, id) ->
                 let nvb_l =
                   List.rev
                     (List.fold_left
@@ -235,7 +235,7 @@ let minimize should_remove map cur_name =
                        [] vb_l)
                 in
                 if nvb_l = [] then e1
-                else { e with exp_desc = Texp_let (rf, nvb_l, e1) }
+                else { e with exp_desc = mkTexp_let ~id (rf, nvb_l, e1) }
             | _ -> e));
     }
   in

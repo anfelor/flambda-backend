@@ -150,6 +150,11 @@ let maybe_region_layout layout lam =
 let maybe_region_exp sort exp lam =
   maybe_region (fun () -> layout_exp sort exp) lam
 
+let with_region_barrier layout barrier lam =
+  match Region_barrier.resolve barrier with
+  | Needs_region -> Lregion (lam, layout)
+  | Not_a_region -> lam
+
 let is_alloc_heap = function Alloc_heap -> true | Alloc_local -> false
 
 (* In cases where we're careful to preserve syntactic arity, we disable
@@ -410,18 +415,18 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
       transl_ident (of_location ~scopes e.exp_loc)
         e.exp_env e.exp_type path desc kind
   | Texp_constant cst -> Lconst (Const_base cst)
-  | Texp_let(rec_flag, pat_expr_list, body) ->
+  | Texp_let(rec_flag, pat_expr_list, body, region_barrier) ->
       let return_layout = layout_exp sort body in
-      transl_let ~scopes ~return_layout rec_flag pat_expr_list
-        (event_before ~scopes body (transl_exp ~scopes sort body))
-  | Texp_function { params; body; ret_sort; ret_mode; alloc_mode;
-                    zero_alloc } ->
+      with_region_barrier return_layout region_barrier
+        (transl_let ~scopes ~return_layout rec_flag pat_expr_list
+          (event_before ~scopes body (transl_exp ~scopes sort body)))
+  | Texp_function { params; body; ret_sort; ret_mode; alloc_mode; zero_alloc } ->
       transl_function ~in_new_scope ~scopes e params body
         ~alloc_mode ~ret_mode ~ret_sort ~region:true ~zero_alloc
   | Texp_apply({ exp_desc = Texp_ident(path, _, {val_kind = Val_prim p},
                                        Id_prim (pmode, psort), _);
                  exp_type = prim_type; } as funct,
-               oargs, pos, ap_mode, zero_alloc)
+               oargs, pos, ap_mode, zero_alloc, region_barrier)
     when can_apply_primitive p pmode pos oargs ->
       let rec cut_args prim_repr oargs =
         match prim_repr, oargs with
@@ -458,6 +463,7 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
           ~poly_mode:pmode ~poly_sort:psort
           path prim_exp args (List.map fst arg_exps) position
       in
+      let lam = with_region_barrier (layout_exp sort e) region_barrier lam in
       if extra_args = [] then lam
       else begin
         let tailcall = Translattribute.get_tailcall_attribute funct in
@@ -472,7 +478,7 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
              ~position ~mode
              ~result_layout lam extra_args (of_location ~scopes e.exp_loc))
       end
-  | Texp_apply(funct, oargs, position, ap_mode, zero_alloc)
+  | Texp_apply(funct, oargs, position, ap_mode, zero_alloc, region_barrier)
     ->
       let tailcall = Translattribute.get_tailcall_attribute funct in
       let inlined = Translattribute.get_inlined_attribute funct in
@@ -484,14 +490,16 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
         zero_alloc_of_application ~num_args:(List.length oargs) zero_alloc funct
       in
       event_after ~scopes e
-        (transl_apply ~scopes ~tailcall ~inlined ~specialised
-           ~assume_zero_alloc
-           ~result_layout
-           ~position ~mode (transl_exp ~scopes Jkind.Sort.for_function funct)
-           oargs (of_location ~scopes e.exp_loc))
-  | Texp_match(arg, arg_sort, pat_expr_list, partial) ->
-      transl_match ~scopes ~arg_sort ~return_sort:sort e arg pat_expr_list
-        partial
+        (with_region_barrier (layout_exp sort e) region_barrier
+          (transl_apply ~scopes ~tailcall ~inlined ~specialised
+             ~assume_zero_alloc
+             ~result_layout
+             ~position ~mode (transl_exp ~scopes Jkind.Sort.for_function funct)
+             oargs (of_location ~scopes e.exp_loc)))
+  | Texp_match(arg, arg_sort, pat_expr_list, partial, region_barrier) ->
+      with_region_barrier (layout_exp sort e) region_barrier
+        (transl_match ~scopes ~arg_sort ~return_sort:sort e arg pat_expr_list
+          partial)
   | Texp_try(body, pat_expr_list) ->
       let id = Typecore.name_cases "exn" pat_expr_list in
       let return_layout = layout_exp sort e in
@@ -1195,6 +1203,8 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
         ]
       in
       Lconst(Const_block(0, cl))
+  | Texp_borrow e ->
+      transl_exp ~scopes sort e
 
 and pure_module m =
   match m.mod_desc with

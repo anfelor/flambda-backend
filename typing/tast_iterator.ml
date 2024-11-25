@@ -321,19 +321,19 @@ let expr sub {exp_loc; exp_extra; exp_desc; exp_env; exp_attributes; _} =
   match exp_desc with
   | Texp_ident (_, lid, _, _, _)  -> iter_loc sub lid
   | Texp_constant _ -> ()
-  | Texp_let (rec_flag, list, exp) ->
+  | Texp_let (rec_flag, list, exp, _) ->
       sub.value_bindings sub (rec_flag, list);
       sub.expr sub exp
   | Texp_function { params; body; _ } ->
       List.iter (function_param sub) params;
       function_body sub body
-  | Texp_apply (exp, list, _, _, _) ->
+  | Texp_apply (exp, list, _, _, _, _) ->
       sub.expr sub exp;
       List.iter (function
         | (_, Arg (exp, _)) -> sub.expr sub exp
         | (_, Omitted _) -> ())
         list
-  | Texp_match (exp, _, cases, _) ->
+  | Texp_match (exp, _, cases, _, _) ->
       sub.expr sub exp;
       List.iter (sub.case sub) cases
   | Texp_try (exp, cases) ->
@@ -427,6 +427,7 @@ let expr sub {exp_loc; exp_extra; exp_desc; exp_env; exp_attributes; _} =
   | Texp_probe_is_enabled _ -> ()
   | Texp_exclave exp -> sub.expr sub exp
   | Texp_src_pos -> ()
+  | Texp_borrow exp -> sub.expr sub exp
 
 
 let package_type sub {pack_fields; pack_txt; _} =

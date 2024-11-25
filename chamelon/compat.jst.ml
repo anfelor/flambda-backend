@@ -20,18 +20,29 @@ let mkTexp_ident ?id:(ident_kind, uu = (Id_value, aliased_many_use))
     (path, longident, vd) =
   Texp_ident (path, longident, vd, ident_kind, uu)
 
+type texp_let_identifier = Region_barrier.t
+
+let mkTexp_let ?id:(rb = Region_barrier.none ()) (rf, vb_l, e) =
+  Texp_let (rf, vb_l, e, rb)
+
 type nonrec apply_arg = apply_arg
 
 type texp_apply_identifier =
-  apply_position * Locality.l * Builtin_attributes.zero_alloc_assume option
+  apply_position
+  * Locality.l
+  * Builtin_attributes.zero_alloc_assume option
+  * Region_barrier.t
 
 let mkTexp_apply
-    ?id:(pos, mode, za =
-        (Default, Locality.disallow_right Locality.legacy, None)) (exp, args) =
+    ?id:(pos, mode, za, rb =
+        ( Default,
+          Locality.disallow_right Locality.legacy,
+          None,
+          Region_barrier.none () )) (exp, args) =
   let args =
     List.map (fun (label, x) -> (Typetexp.transl_label label None, x)) args
   in
-  Texp_apply (exp, args, pos, mode, za)
+  Texp_apply (exp, args, pos, mode, za, rb)
 
 type texp_tuple_identifier = string option list * alloc_mode
 
@@ -182,10 +193,11 @@ type texp_sequence_identifier = Jkind.sort
 let mkTexp_sequence ?id:(sort = Jkind.Sort.value) (e1, e2) =
   Texp_sequence (e1, sort, e2)
 
-type texp_match_identifier = Jkind.sort
+type texp_match_identifier = Jkind.sort * Region_barrier.t
 
-let mkTexp_match ?id:(sort = Jkind.Sort.value) (e, cases, partial) =
-  Texp_match (e, sort, cases, partial)
+let mkTexp_match ?id:(sort, rb = (Jkind.Sort.value, Region_barrier.none ()))
+    (e, cases, partial) =
+  Texp_match (e, sort, cases, partial, rb)
 
 let mkTexp_assert e loc = Texp_assert (e, loc)
 
@@ -195,6 +207,8 @@ type matched_expression_desc =
       * Longident.t Location.loc
       * value_description
       * texp_ident_identifier
+  | Texp_let of
+      Asttypes.rec_flag * value_binding list * expression * texp_let_identifier
   | Texp_apply of
       expression * (Asttypes.arg_label * apply_arg) list * texp_apply_identifier
   | Texp_construct of
@@ -218,9 +232,10 @@ let view_texp (e : expression_desc) =
   match e with
   | Texp_ident (path, longident, vd, ident_kind, uu) ->
       Texp_ident (path, longident, vd, (ident_kind, uu))
-  | Texp_apply (exp, args, pos, mode, za) ->
+  | Texp_let (rf, vb_l, e, rb) -> Texp_let (rf, vb_l, e, rb)
+  | Texp_apply (exp, args, pos, mode, za, rb) ->
       let args = List.map (fun (label, x) -> (untype_label label, x)) args in
-      Texp_apply (exp, args, (pos, mode, za))
+      Texp_apply (exp, args, (pos, mode, za, rb))
   | Texp_construct (name, desc, args, mode) ->
       Texp_construct (name, desc, args, mode)
   | Texp_tuple (args, mode) ->
@@ -276,7 +291,8 @@ let view_texp (e : expression_desc) =
       Texp_function
         ({ params; body }, { alloc_mode; ret_sort; ret_mode; zero_alloc })
   | Texp_sequence (e1, sort, e2) -> Texp_sequence (e1, e2, sort)
-  | Texp_match (e, sort, cases, partial) -> Texp_match (e, cases, partial, sort)
+  | Texp_match (e, sort, cases, partial, rb) ->
+      Texp_match (e, cases, partial, (sort, rb))
   | _ -> O e
 
 let mkpattern_data ~pat_desc ~pat_loc ~pat_extra ~pat_type ~pat_env

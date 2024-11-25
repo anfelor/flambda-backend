@@ -6,6 +6,7 @@ open Types
 open Stdlib
 open Typedtree
 open Tast_mapper
+open Compat
 
 let is_function typ = match get_desc typ with Tarrow _ -> true | _ -> false
 
@@ -64,12 +65,12 @@ let minimize should_remove map cur_name =
             | _ -> str_it));
       expr =
         (fun mapper e ->
-          match e.exp_desc with
-          | Texp_let (r_f, vb_l, e) ->
+          match view_texp e.exp_desc with
+          | Texp_let (r_f, vb_l, e, id) ->
               {
                 e with
                 exp_desc =
-                  Texp_let
+                  mkTexp_let ~id
                     ( r_f,
                       List.map minimize_vb_attrs vb_l,
                       Tast_mapper.default.expr mapper e );
