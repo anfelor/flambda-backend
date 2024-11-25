@@ -6,7 +6,11 @@
 
 let unique_use (local_ unique_ _x) = ()
 [%%expect{|
+<<<<<<< Updated upstream
 val unique_use : local_ 'a @ unique -> unit = <fun>
+=======
+val unique_use : local_ unique_ 'a -> unit = <fun>
+>>>>>>> Stashed changes
 |}]
 
 let global_shared_use : 'a -> unit = fun _ -> ()
@@ -21,12 +25,20 @@ val local_shared_use : local_ 'a -> unit = <fun>
 
 let unique_shared_use (local_ unique_ x) (local_ y) = ()
 [%%expect{|
+<<<<<<< Updated upstream
 val unique_shared_use : local_ 'a @ unique -> local_ 'b -> unit = <fun>
+=======
+val unique_shared_use : local_ unique_ 'a -> local_ 'b -> unit = <fun>
+>>>>>>> Stashed changes
 |}]
 
 let shared_unique_use (local_ x) (local_ unique_ y) = ()
 [%%expect{|
+<<<<<<< Updated upstream
 val shared_unique_use : local_ 'a -> local_ 'b @ unique -> unit = <fun>
+=======
+val shared_unique_use : local_ 'a -> local_ unique_ 'b -> unit = <fun>
+>>>>>>> Stashed changes
 |}]
 
 let shared_shared_use (local_ x) (local_ y) = ()
@@ -43,7 +55,15 @@ val local_returning : local_ 'a -> local_ 'a = <fun>
 (* Cannot borrow at top level let *)
 let x = & "hello"
 [%%expect{|
+<<<<<<< Updated upstream
 val x : string = "hello"
+=======
+Line 1, characters 8-17:
+1 | let x = & "hello"
+            ^^^^^^^^^
+Error: Cannot borrow here; borrowing is currently supported in the RHS of
+       let-bindings, or expressions being matched, or function arguments.
+>>>>>>> Stashed changes
 |}]
 
 (* borrowed values are shared and cannot be used as unique *)
@@ -52,7 +72,14 @@ let foo () =
   unique_use &y;
   ()
 [%%expect{|
+<<<<<<< Updated upstream
 val foo : unit -> unit = <fun>
+=======
+Line 3, characters 13-15:
+3 |   unique_use &y;
+                 ^^
+Error: Found a shared value where a unique value was expected
+>>>>>>> Stashed changes
 |}]
 
 (* borrowed values are local and cannot escape *)
@@ -61,7 +88,14 @@ let foo () =
   global_shared_use &x;
   ()
 [%%expect{|
+<<<<<<< Updated upstream
 val foo : unit -> unit = <fun>
+=======
+Line 3, characters 20-22:
+3 |   global_shared_use &x;
+                        ^^
+Error: This value escapes its region
+>>>>>>> Stashed changes
 |}]
 
 (* In the borrow region, you are not allowed to use the original value uniquely
@@ -76,9 +110,15 @@ Line 4, characters 13-14:
 4 |   unique_use x;
                  ^
 Error: This value is used here as unique, but it has already been used:
+<<<<<<< Updated upstream
 Line 3, characters 11-12:
 3 |   let y = &x in
                ^
+=======
+Line 3, characters 10-11:
+3 |   let y = &x in
+              ^
+>>>>>>> Stashed changes
 
 |}]
 
@@ -87,9 +127,15 @@ let foo () =
   let y = (unique_use x; &x) in
   ()
 [%%expect{|
+<<<<<<< Updated upstream
 Line 3, characters 26-27:
 3 |   let y = (unique_use x; &x) in
                               ^
+=======
+Line 3, characters 25-26:
+3 |   let y = (unique_use x; &x) in
+                             ^
+>>>>>>> Stashed changes
 Error: This value is used here, but it has already been used as unique:
 Line 3, characters 22-23:
 3 |   let y = (unique_use x; &x) in
@@ -109,9 +155,15 @@ Line 4, characters 13-14:
 4 |   unique_use x;
                  ^
 Error: This value is used here as unique, but it has already been used:
+<<<<<<< Updated upstream
 Line 3, characters 11-12:
 3 |   let _ = &x in
                ^
+=======
+Line 3, characters 10-11:
+3 |   let _ = &x in
+              ^
+>>>>>>> Stashed changes
 
 |}]
 
@@ -146,11 +198,18 @@ let foo () =
 Line 5, characters 13-14:
 5 |   unique_use x;
                  ^
+<<<<<<< Updated upstream
 Error: This value is used here as unique,
        but it has already been used more than once:
 Line 3, characters 12-13:
 3 |   (let y = &x in
                 ^
+=======
+Error: This value is used here as unique, but it has already been used:
+Line 4, characters 20-21:
+4 |   global_shared_use x);
+                        ^
+>>>>>>> Stashed changes
 
 |}]
 
@@ -161,6 +220,7 @@ let foo () =
   local_shared_use y);
   unique_use x
 [%%expect{|
+<<<<<<< Updated upstream
 Line 5, characters 13-14:
 5 |   unique_use x
                  ^
@@ -169,6 +229,9 @@ Line 3, characters 12-13:
 3 |   (let y = &x in
                 ^
 
+=======
+val foo : unit -> unit = <fun>
+>>>>>>> Stashed changes
 |}]
 
 
@@ -180,7 +243,14 @@ let foo () =
   let y = & x in
   ignore (let z = & y in z)
 [%%expect{|
+<<<<<<< Updated upstream
 val foo : unit -> unit = <fun>
+=======
+Line 4, characters 25-26:
+4 |   ignore (let z = & y in z)
+                             ^
+Error: This value escapes its region
+>>>>>>> Stashed changes
 |}]
 
 (* y can escape *)
@@ -189,12 +259,19 @@ let foo () =
   let y = & x in
   ignore (let z = &y in y)
 [%%expect{|
+<<<<<<< Updated upstream
 Line 4, characters 14-15:
 4 |   ignore (let z = &y in y)
                   ^
 Warning 26 [unused-var]: unused variable z.
 
 val foo : unit -> unit = <fun>
+=======
+Line 4, characters 24-25:
+4 |   ignore (let z = &y in y)
+                            ^
+Error: This value escapes its region
+>>>>>>> Stashed changes
 |}]
 
 
@@ -208,7 +285,14 @@ let foo () =
   match & y with
   | x -> ignore (unique_use x)
 [%%expect{|
+<<<<<<< Updated upstream
 val foo : unit -> unit = <fun>
+=======
+Line 4, characters 28-29:
+4 |   | x -> ignore (unique_use x)
+                                ^
+Error: Found a shared value where a unique value was expected
+>>>>>>> Stashed changes
 |}]
 
 (* borrowed values are local and cannot escape *)
@@ -217,7 +301,14 @@ let foo () =
   match & y with
   | x -> ignore (global_shared_use x)
 [%%expect{|
+<<<<<<< Updated upstream
 val foo : unit -> unit = <fun>
+=======
+Line 4, characters 35-36:
+4 |   | x -> ignore (global_shared_use x)
+                                       ^
+Error: This value escapes its region
+>>>>>>> Stashed changes
 |}]
 
 (* During borrowing, you are not allowed to use the original value uniquely *)
@@ -230,9 +321,15 @@ Line 4, characters 29-30:
 4 |   | _y -> ignore (unique_use x)
                                  ^
 Error: This value is used here as unique, but it has already been used:
+<<<<<<< Updated upstream
 Line 3, characters 10-11:
 3 |   match & x with
               ^
+=======
+Line 3, characters 8-9:
+3 |   match & x with
+            ^
+>>>>>>> Stashed changes
 
 |}]
 
@@ -249,9 +346,15 @@ Line 4, characters 28-29:
 4 |   | _ -> ignore (unique_use x)
                                 ^
 Error: This value is used here as unique, but it has already been used:
+<<<<<<< Updated upstream
 Line 3, characters 10-11:
 3 |   match & x with
               ^
+=======
+Line 3, characters 8-9:
+3 |   match & x with
+            ^
+>>>>>>> Stashed changes
 
 |}]
 
@@ -275,11 +378,18 @@ let foo () =
 Line 6, characters 21-22:
 6 |   ignore (unique_use x)
                          ^
+<<<<<<< Updated upstream
 Error: This value is used here as unique,
        but it has already been used more than once:
 Line 3, characters 11-12:
 3 |   (match & x with
                ^
+=======
+Error: This value is used here as unique, but it has already been used:
+Line 4, characters 27-28:
+4 |   | _ -> global_shared_use x
+                               ^
+>>>>>>> Stashed changes
 
 |}]
 
@@ -309,6 +419,7 @@ let foo () =
   unique_use x;
   ()
 [%%expect{|
+<<<<<<< Updated upstream
 Line 4, characters 13-14:
 4 |   unique_use x;
                  ^
@@ -317,6 +428,9 @@ Line 3, characters 20-21:
 3 |   local_shared_use &x;
                         ^
 
+=======
+val foo : unit -> unit = <fun>
+>>>>>>> Stashed changes
 |}]
 
 (* borrow after unique usage is bad *)
@@ -326,9 +440,15 @@ let foo () =
   local_shared_use &x;
   ()
 [%%expect{|
+<<<<<<< Updated upstream
 Line 4, characters 20-21:
 4 |   local_shared_use &x;
                         ^
+=======
+Line 4, characters 19-20:
+4 |   local_shared_use &x;
+                       ^
+>>>>>>> Stashed changes
 Error: This value is used here, but it has already been used as unique:
 Line 3, characters 13-14:
 3 |   unique_use x;
@@ -343,6 +463,7 @@ let foo () =
   unique_use x;
   ()
 [%%expect{|
+<<<<<<< Updated upstream
 Line 4, characters 13-14:
 4 |   unique_use x;
                  ^
@@ -352,6 +473,9 @@ Line 3, characters 21-22:
 3 |   shared_shared_use &x &x;
                          ^
 
+=======
+val foo : unit -> unit = <fun>
+>>>>>>> Stashed changes
 |}]
 
 (* but you need to borrow both of course *)
@@ -364,11 +488,18 @@ let foo () =
 Line 4, characters 13-14:
 4 |   unique_use x;
                  ^
+<<<<<<< Updated upstream
 Error: This value is used here as unique,
        but it has already been used more than once:
 Line 3, characters 21-22:
 3 |   shared_shared_use &x x;
                          ^
+=======
+Error: This value is used here as unique, but it has already been used:
+Line 3, characters 23-24:
+3 |   shared_shared_use &x x;
+                           ^
+>>>>>>> Stashed changes
 
 |}]
 
@@ -395,7 +526,14 @@ let foo () =
   unique_use &x;
   ()
 [%%expect{|
+<<<<<<< Updated upstream
 val foo : unit -> unit = <fun>
+=======
+Line 3, characters 13-15:
+3 |   unique_use &x;
+                 ^^
+Error: Found a shared value where a unique value was expected
+>>>>>>> Stashed changes
 |}]
 
 (* borrowed values are local and cannot escape *)
@@ -404,7 +542,14 @@ let foo () =
   global_shared_use &x;
   ()
 [%%expect{|
+<<<<<<< Updated upstream
 val foo : unit -> unit = <fun>
+=======
+Line 3, characters 20-22:
+3 |   global_shared_use &x;
+                        ^^
+Error: This value escapes its region
+>>>>>>> Stashed changes
 |}]
 
 (* Borrowing doesn't work well with local-returning functions *)
@@ -416,9 +561,13 @@ let foo () =
 Line 3, characters 2-20:
 3 |   local_returning &x;
       ^^^^^^^^^^^^^^^^^^
+<<<<<<< Updated upstream
 Warning 10 [non-unit-statement]: this expression should have type unit.
 
 val foo : unit -> unit = <fun>
+=======
+Error: This value escapes its region
+>>>>>>> Stashed changes
 |}]
 
 let foo () =
@@ -430,9 +579,15 @@ Line 3, characters 23-24:
 3 |   shared_unique_use &x x;
                            ^
 Error: This value is used here as unique, but it has already been used:
+<<<<<<< Updated upstream
 Line 3, characters 21-22:
 3 |   shared_unique_use &x x;
                          ^
+=======
+Line 3, characters 20-21:
+3 |   shared_unique_use &x x;
+                        ^
+>>>>>>> Stashed changes
 
 |}]
 
@@ -456,9 +611,15 @@ Line 10, characters 13-14:
 10 |   unique_use x
                   ^
 Error: This value is used here as unique, but it has already been used:
+<<<<<<< Updated upstream
 Line 5, characters 24-25:
 5 |       local_shared_use &x;
                             ^
+=======
+Line 5, characters 23-25:
+5 |       local_shared_use &x;
+                           ^^
+>>>>>>> Stashed changes
 
 |}]
 
@@ -474,6 +635,7 @@ let foo () =
   in
   unique_use x
 [%%expect{|
+<<<<<<< Updated upstream
 Line 10, characters 13-14:
 10 |   unique_use x
                   ^
@@ -482,6 +644,9 @@ Line 5, characters 24-25:
 5 |       local_shared_use &x;
                             ^
 
+=======
+val foo : unit -> unit = <fun>
+>>>>>>> Stashed changes
 |}]
 
 (* The function is local  *)
@@ -493,7 +658,14 @@ let foo () =
   in
   ref bar
 [%%expect{|
+<<<<<<< Updated upstream
 val foo : unit -> (unit -> unit) ref = <fun>
+=======
+Line 7, characters 6-9:
+7 |   ref bar
+          ^^^
+Error: This value escapes its region
+>>>>>>> Stashed changes
 |}]
 
 (* The function is shared *)
@@ -506,5 +678,12 @@ let foo () =
   unique_use bar;
   ()
 [%%expect{|
+<<<<<<< Updated upstream
 val foo : unit -> unit = <fun>
+=======
+Line 7, characters 13-16:
+7 |   unique_use bar;
+                 ^^^
+Error: Found a shared value where a unique value was expected
+>>>>>>> Stashed changes
 |}]
