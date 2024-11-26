@@ -475,15 +475,7 @@ let foo () =
    in
   unique_id r
 [%%expect{|
-Line 6, characters 12-13:
-6 |   unique_id r
-                ^
-Error: This value is used here,
-       but it was borrowed and was captured in function
-Line 4, characters 6-20:
-4 |     | {dim; x; y; z} -> ()
-          ^^^^^^^^^^^^^^
-
+val foo : unit -> point = <fun>
 |}]
 
 (* not closing over is fine *)
@@ -505,10 +497,11 @@ let foo () =
 Line 4, characters 12-13:
 4 |   unique_id r
                 ^
-Error: This value is used here, but it was borrowed and was captured by lazy
-Line 3, characters 17-18:
+Error: This value is used here as unique,
+       but part of it has already been used:
+Line 3, characters 16-21:
 3 |   let _l = lazy (r.z) in
-                     ^
+                    ^^^^^
 
 |}]
 

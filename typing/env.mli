@@ -203,6 +203,7 @@ type shared_context =
   | Class
   | Module
   | Probe
+  | Borrow
 
 (** Items whose accesses are affected by locks *)
 type lock_item =

@@ -327,6 +327,7 @@ type shared_context =
   | Class
   | Module
   | Probe
+  | Borrow
 
 type lock =
   | Escape_lock of escaping_context
@@ -4093,6 +4094,7 @@ let string_of_shared_context : shared_context -> string =
   | Class -> "a class"
   | Module -> "a module"
   | Probe -> "a probe"
+  | Borrow -> "a borrow"
 
 let sharedness_hint ppf : shared_context -> _ = function
   | For_loop ->
@@ -4128,6 +4130,10 @@ let sharedness_hint ppf : shared_context -> _ = function
     Format.fprintf ppf
         "@[Hint: This identifier cannot be used uniquely,@ \
           because it is defined outside of the probe.@]"
+  | Borrow ->
+    Format.fprintf ppf
+      "@[Hint: This value cannot be used uniquely,@ \
+       because it is borrowed.@]"
 
 let print_lock_item ppf (item, lid) =
   match item with

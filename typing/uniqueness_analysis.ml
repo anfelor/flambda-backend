@@ -185,6 +185,9 @@ module Maybe_aliased : sig
   (** We have found a region which we can use to turn [Borrowing] accesses
       into [Borrowed] ones. *)
   val add_region : region -> t -> t
+
+  (** Is this a [Borrowing] or [Borrowed] use? *)
+  val find_borrow : t -> (Occurrence.t * access) option
 end = struct
   type region =
     { region_occ : Occurrence.t;
@@ -254,6 +257,9 @@ end = struct
         | Write -> Ok ()
         | Borrowing reason -> Error (No_region_found { occ; reason })
         | Borrowed { region_occ; region_barrier } -> (
+          (* CR borrowing: this can reject currently valid code if a memory cell
+             is read in a function, then becomes [Borrowing] and is then followed
+             by an Maybe_unique (but really aliased) use. *)
           match Region_barrier.enable region_barrier with
           | Ok () -> Ok ()
           | Error region_error ->
@@ -267,6 +273,14 @@ end = struct
     List.map
       (fun (occ, access) ->
         occ, match access with Borrowing _ -> Borrowed region | m -> m)
+      t
+
+  let find_borrow t =
+    List.find_opt
+      (fun (occ, access) ->
+        match access with
+        | Borrowing No_region_yet | Borrowed _ -> true
+        | Read _ | Write | Borrowing _ -> false)
       t
 end
 
@@ -328,6 +342,7 @@ module Usage : sig
   type error_kind =
     | Cannot_contain of Maybe_aliased.cannot_contain
     | Cannot_force of Maybe_unique.cannot_force
+    | Unnecessary_borrow of Occurrence.t
 
   type error =
     { error_kind : error_kind;
@@ -436,6 +451,7 @@ end = struct
   type error_kind =
     | Cannot_contain of Maybe_aliased.cannot_contain
     | Cannot_force of Maybe_unique.cannot_force
+    | Unnecessary_borrow of Occurrence.t
 
   type error =
     { error_kind : error_kind;
@@ -463,6 +479,13 @@ end = struct
              there;
              first_or_second = First
            })
+
+  let detect_unused_borrow t there first_or_second =
+    match Maybe_aliased.find_borrow t with
+    | Some (occ, _) ->
+      raise
+        (Error { error_kind = Unnecessary_borrow occ; there; first_or_second })
+    | None -> ()
 
   let par m0 m1 =
     match m0, m1 with
@@ -969,6 +992,9 @@ module Value : sig
   (** Mark the value as aliased_or_unique   *)
   val mark_maybe_unique : t -> UF.t
 
+  (** Mark the value as [Maybe_aliased] *)
+  val mark_borrowing : t -> UF.t
+
   (** Mark the memory_address of the value as implicitly borrowed
       (borrow_or_aliased). *)
   val mark_implicit_borrow_memory_address : Maybe_aliased.access -> t -> UF.t
@@ -1007,6 +1033,14 @@ end = struct
     | Fresh -> UF.unused
     | Existing { paths; unique_use; occ } ->
       Paths.mark (Usage.maybe_unique unique_use occ) paths
+
+  let mark_borrowing = function
+    | Fresh -> UF.unused
+    | Existing { paths; occ } ->
+      Paths.mark
+        (Usage.Maybe_aliased
+           (Maybe_aliased.singleton occ (Borrowing No_region_yet)))
+        paths
 
   let mark_aliased ~reason = function
     | Fresh -> UF.unused
@@ -1325,13 +1359,18 @@ let mark_aliased_open_variables ienv f _loc =
   in
   UF.pars ufs
 
-let lift_borrowing reason uf =
-  UF.map
-    (function
-      | Maybe_aliased t ->
-        Maybe_aliased (Maybe_aliased.capture_in_closure reason t)
-      | m -> m)
-    uf
+let lift_borrowing reason alloc_mode uf =
+  let any_lifted = ref false in
+  let uf =
+    UF.map
+      (function
+        | Maybe_aliased t ->
+          any_lifted := true;
+          Maybe_aliased (Maybe_aliased.capture_in_closure reason t)
+        | m -> m)
+      uf
+  in
+  uf, !any_lifted
 
 let add_region region_occ region_barrier uf =
   UF.map
@@ -1362,10 +1401,9 @@ let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
   | Texp_constant _ -> UF.unused
   | Texp_let (_, vbs, body, region_barrier) ->
     let ext, uf_vbs = check_uniqueness_value_bindings ienv vbs in
+    (* CR borrowing: this is unsound since it allows the body to use the variable uniquely *)
+    let uf_vbs = add_region (Occurrence.mk exp.exp_loc) region_barrier uf_vbs in
     let uf_body = check_uniqueness_exp (Ienv.extend ienv ext) body in
-    let uf_body =
-      add_region (Occurrence.mk exp.exp_loc) region_barrier uf_body
-    in
     UF.seq uf_vbs uf_body
   | Texp_function { params; body } ->
     let ienv, uf_params =
@@ -1411,14 +1449,14 @@ let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
           | Omitted _ -> UF.unused)
         args
     in
-    let uf = UF.pars (uf_fn :: uf_args) in
-    add_region (Occurrence.mk exp.exp_loc) region_barrier uf
+    let uf_args =
+      add_region (Occurrence.mk exp.exp_loc) region_barrier (UF.pars uf_args)
+    in
+    UF.par uf_fn uf_args
   | Texp_match (arg, _, cases, _, region_barrier) ->
     let value, uf_arg = check_uniqueness_exp_for_match ienv arg in
+    let uf_arg = add_region (Occurrence.mk exp.exp_loc) region_barrier uf_arg in
     let uf_cases = check_uniqueness_comp_cases ienv value cases in
-    let uf_cases =
-      add_region (Occurrence.mk exp.exp_loc) region_barrier uf_cases
-    in
     UF.seq uf_arg uf_cases
   | Texp_try (body, cases) ->
     let uf_body = check_uniqueness_exp ienv body in
@@ -1556,7 +1594,9 @@ let rec check_uniqueness_exp (ienv : Ienv.t) exp : UF.t =
   | Texp_probe_is_enabled _ -> UF.unused
   | Texp_exclave e -> check_uniqueness_exp ienv e
   | Texp_src_pos -> UF.unused
-  | Texp_borrow e -> check_uniqueness_exp ienv e
+  | Texp_borrow e ->
+    let value, uf = check_uniqueness_exp_as_value ienv e in
+    UF.seq uf (Value.mark_borrowing value)
 
 (**
 Corresponds to the first mode.
@@ -1787,10 +1827,10 @@ let report_multi_use inner first_is_of_second =
       | No_region_found { occ; reason } ->
         let message =
           match reason with
-          | No_region_yet -> "has no region"
-          | Captured_in_function -> "was captured in function"
-          | Captured_in_lazy -> "was captured by lazy"
-          | Captured_in_letop -> "was captured by letop"
+          | No_region_yet -> "in the same region"
+          | Captured_in_function -> "in a function"
+          | Captured_in_lazy -> "in a lazy"
+          | Captured_in_letop -> "in a letop"
         in
         message, [Location.msg ~loc:occ.loc ""]
       | Region_is_local { occ; region_occ; region_error = _ } ->
@@ -1799,7 +1839,7 @@ let report_multi_use inner first_is_of_second =
             Location.msg ~loc:region_occ.loc "This region is local." ] )
     in
     let error =
-      Format.dprintf "This value is %s here,@ but %s was borrowed and %s"
+      Format.dprintf "This value is %s here,@ but %s was borrowed %s"
         second_usage first_is_of_second message
     in
     Location.errorf ~loc:second.loc ~sub "@[%t@]" error

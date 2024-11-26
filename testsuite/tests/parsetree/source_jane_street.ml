@@ -1009,7 +1009,9 @@ Line 9, characters 11-95:
 9 | module _ = Base(Name1)(Value1)(Name2)(Value2(Name2_1)(Value2_1)) [@jane.non_erasable.instances]
                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Error: Unbound module "Base[Name1:Value1][Name2:Value2[Name2_1:Value2_1]]"
-|}](*********)
+|}]
+
+(*********)
 (* modes *)
 
 module type S = sig
@@ -1040,13 +1042,14 @@ type record = { left : string; right : string }
 
 let cast_local : 'a @ local -> unit = fun x -> ()
 
-let borrow_ident a = cast_local &a
+let borrow_ident a = cast_local &a; unique_ a
 
-let borrow_field a = cast_local &a.left
+let borrow_field a = cast_local (&a.left, unique_ a.right); ()
 [%%expect{|
 type record = { left : string; right : string; }
 val cast_local : ('a : value_or_null). local_ 'a -> unit @@ global many =
   <fun>
-val borrow_ident : ('a : value_or_null). 'a -> unit @@ global many = <fun>
-val borrow_field : record -> unit @@ global many = <fun>
+val borrow_ident : ('a : value_or_null). 'a @ unique -> 'a @@ global many =
+  <fun>
+val borrow_field : record @ unique -> unit @@ global many = <fun>
 |}]

@@ -6515,12 +6515,14 @@ and type_expect_
         ~attributes:sexp.pexp_attributes
         comp
   | Pexp_borrow e ->
-      let expected_mode' =
-        mode_morph (Value.join_with (Comonadic Areality) Regionality.Const.Local)
-          expected_mode
+      let exp = type_expect env expected_mode e ty_expected_explained in
+      let mode =
+        Value.join_with (Comonadic Areality) Regionality.Const.Local
+          (Value.join_with (Monadic Uniqueness) Uniqueness.Const.Aliased
+            Value.min)
       in
-      let exp = type_expect env expected_mode' e ty_expected_explained in
-      (* CR uniqueness: If the borrow happens in a function, we need to
+      submode ~loc ~env ~shared_context:Borrow mode expected_mode;
+      (* CR borrowing: If the borrow happens in a function, we need to
          make the lock of that function local. Currently borrowing is unsound
          since we do not do that. *)
       rue {
@@ -7571,7 +7573,7 @@ and type_argument ?explanation ?recarg env (mode : expected_mode) sarg
         let ret_mode = alloc_as_value mret in
         let region_barrier =
           let regionality = Regionality.newvar () in
-          (* CR uniqueness: do we need to constrain this? *)
+          (* CR borrowing: do we need to constrain this? *)
           Region_barrier.create regionality
         in
         let e =
@@ -7605,7 +7607,6 @@ and type_argument ?explanation ?recarg env (mode : expected_mode) sarg
               ret_sort;
               alloc_mode;
               zero_alloc = Zero_alloc.default;
-              (* CR borrowing: we need to ensure that this barrier is never activated *)
             }
         }
       in
