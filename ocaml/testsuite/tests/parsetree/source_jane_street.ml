@@ -1048,9 +1048,9 @@ let overwrite_record = function
 let overwrite_record = function
     { a; b } as t -> overwrite_ t with { b = a }
 
-let ret_record () = { a = 1; b = 2 }
+let ret_record : unit -> record @ unique = fun () -> { a = 1; b = 2 }
 
-let overwrite_record () =
+let overwrite_record a =
   overwrite_ (ret_record ()) with { b = a }
 
 type constructor = C of { a : int; b : int }
@@ -1061,10 +1061,17 @@ let overwrite_constructor = function
 let overwrite_constructor = function
     C { a; b } as t -> overwrite_ t with C { b = a }
 [%%expect{|
-Line 2, characters 19-43:
-2 |     (a, b) as t -> overwrite_ t with (b, _)
-                       ^^^^^^^^^^^^^^^^^^^^^^^^
-Alert Translcore: Overwrite not implemented.
-Uncaught exception: File "ocaml/parsing/location.ml", line 1107, characters 2-8: Assertion failed
-
+val overwrite_tuple :
+  ('a : value_or_null) ('b : value_or_null). unique_ 'a * 'b -> 'b * 'b @@
+  global many = <fun>
+type record = { a : int; b : int; }
+val overwrite_record : unique_ record -> record @@ global many = <fun>
+val overwrite_record : unique_ record -> record @@ global many = <fun>
+val ret_record : unit -> unique_ record @@ global many = <fun>
+val overwrite_record : int -> record @@ global many = <fun>
+type constructor = C of { a : int; b : int; }
+val overwrite_constructor : unique_ constructor -> constructor @@ global many =
+  <fun>
+val overwrite_constructor : unique_ constructor -> constructor @@ global many =
+  <fun>
 |}]
